@@ -16,7 +16,7 @@ service and database. The purchase saga [14][16]: one transaction across price, 
 - A decline keeps the session open for another token while the price quote is valid; a definitive 409 voids the authorization and asks for a requote; a 422 is a contract bug: void, FAILED, alert.
 - A 503 or timeout leaves the session PLACING, answers 202, and ResolveInDoubtPlacements replays the stored body with the same Idempotency-Key until a definitive answer; alert at 20 h, before the network's 24 h idempotency window.
 - Events use the storefront CloudEvents namespace `com.retailnetwork.storefront.checkout.<entity>.<Event>` on `retailnetwork.checkout.events`
-  (analytics-only events on `.analytics`). Published: CheckoutCompleted, CheckoutOpened, CheckoutDeclined, CheckoutRequoteRequired, CheckoutFailed. Consumed: none. No `warehouse.*` topic is consumed or produced.
+  (analytics-only events on `.analytics`). Published: CheckoutCompleted, CheckoutOpened, CheckoutDeclined, CheckoutRequoteRequired, CheckoutFailed, CheckoutSessionExpired, CheckoutPlacementInDoubt (ADR 0004). Consumed: none. No `warehouse.*` topic is consumed or produced.
 - The storefront calls only the network's Open Host Service routes (model inbound rows for `shopper / storefront`),
   never an in-org or restricted route; sibling data used in a decision is a local event-fed read model, except the
   calls the model lists under `sync_calls`.

@@ -1,0 +1,356 @@
+openapi: 3.0.3
+info:
+  title: Checkout API
+  version: 0.1.0
+  contact:
+    name: checkout maintainers
+    url: https://github.com/IQVO/checkout
+  description: >-
+    REST contract of the checkout bounded context of the digital storefront,
+    derived from storefront/model/model.yaml (contexts[checkout].rest) and the
+    final model-gap decisions H1-H10. Checkout is the purchase saga: OPEN ->
+    AUTHORIZING -> PLACING -> COMPLETED, with DECLINED (another token may be
+    tried while the price quote is valid), REQUOTE_REQUIRED and FAILED (both
+    carry a void that is retried until it succeeds), and EXPIRED (from OPEN or
+    DECLINED).
+    Authorize before placing (compensatable: void), place the order through
+    customer-ordering POST /checkout (the pivot, via an Anti-Corruption
+    Layer), then retriable steps via events. PLACING is the semantic lock:
+    while the place-order outcome is unknown there is no void and no new
+    attempt; the session answers 202 and the BFF polls. The session stores
+    shopperId and shipToAddressId references, never PII, and the stored
+    placement request is PII-free so ResolveInDoubtPlacements can replay it
+    byte for byte with the same Idempotency-Key (alert at 20 h, give up and void at 22 h, before
+    the network's 24 h idempotency window). Errors are RFC 9457 problem details
+    (application/problem+json) whose type is /problems/<slug>; shared types
+    are not-found (404), illegal-transition (409), concurrent-update (409)
+    and validation-failed (422), plus one kebab-case slug per Err of the
+    model. Every write takes an Idempotency-Key header. No authentication.
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: CheckoutSessions
+    description: The purchase saga (CheckoutSession).
+paths:
+  /checkout-sessions:
+    post:
+      tags: [CheckoutSessions]
+      operationId: openCheckoutSession
+      summary: Open a checkout session for a cart
+      description: >-
+        OpenSession. Reads the cart snapshot (shopping-cart GET
+        /carts/{cartId}), checks every selected offer is still QUOTED with
+        margin (delivery-promise GET /delivery-offers/{offerId}), issues the
+        binding PriceQuote (pricing POST /price-quotes) and opens the session.
+        The BFF then shows the review page with the binding total.
+        shipToAddressId references a saved address held by customer-ordering
+        (NG1); the address itself never enters the storefront.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenSessionRequest'
+      responses:
+        '201':
+          description: The opened session (OPEN).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutSession'
+        '409':
+          description: cart-not-checkout-ready (ErrCartNotCheckoutReady) or concurrent-update.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: >-
+            validation-failed (a missing reference or an unknown cart) or
+            offer-not-quotable (ErrOfferNotQuotable, decision H3: a selected
+            offer is no longer QUOTED or expires within 2 minutes; no state
+            changes, the BFF refreshes the cart's delivery quote).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: upstream-contract-violation (ErrContractViolation, gap S1/S2 checks) - a sibling answered something that cannot form a session; an alert is raised.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: >-
+            A dependency is unreachable (shopping-cart-unavailable,
+            delivery-promise-unavailable or pricing-unavailable); retry with the
+            same Idempotency-Key.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /checkout-sessions/{sessionId}:
+    get:
+      tags: [CheckoutSessions]
+      operationId: getCheckoutSession
+      summary: Get a checkout session
+      description: >-
+        GetSession. While PLACING after an in-doubt placement this is the
+        polling endpoint the BFF uses until a definitive outcome.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: The session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutSession'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /checkout-sessions/{sessionId}:confirm:
+    post:
+      tags: [CheckoutSessions]
+      operationId: confirmCheckoutSession
+      summary: Confirm the session with a payment method token
+      description: >-
+        ConfirmSession with the PSP payment method token (never a card
+        number). AUTHORIZING calls customer-payments POST
+        /payment-authorizations (key <sessionId>:auth:<attempt>, the attempt
+        counter grows on every retry after a decline; allocations per group);
+        the authorized amount must equal the quote total
+        (ErrAuthorizationMismatch). PLACING persists the placement request and
+        calls customer-ordering POST /checkout with Idempotency-Key equal to
+        the sessionId. Outcomes: 200 with the session in a definitive state
+        (COMPLETED, DECLINED, REQUOTE_REQUIRED with requotedOffers after a
+        successful void, or FAILED after a void plus an alert for a contract
+        bug); 202 while the place-order outcome is unknown (the session stays
+        PLACING; poll GET /checkout-sessions/{sessionId}). A DECLINED session
+        may be confirmed again with another token while the price quote is
+        valid.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmSessionRequest'
+      responses:
+        '200':
+          description: The session in a definitive state (COMPLETED, DECLINED, REQUOTE_REQUIRED or FAILED).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutSession'
+        '202':
+          description: >-
+            An outcome is unknown: the authorization (the session stays
+            AUTHORIZING; ResolveStuckAuthorizations re-calls with the same key
+            after 2 minutes) or the place-order step (the session stays PLACING,
+            the semantic lock). Poll GET /checkout-sessions/{sessionId}.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutSession'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: >-
+            session-closed (ErrSessionClosed), authorization-mismatch
+            (ErrAuthorizationMismatch, the authorization is voided),
+            placement-in-doubt (ErrPlacementInDoubt), void-pending (ErrVoidPending,
+            a previous authorization is still being voided), illegal-transition
+            (a confirm while AUTHORIZING) or concurrent-update.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: >-
+            validation-failed (a missing token) or price-quote-expired
+            (ErrPriceQuoteExpired, contracts-delta S2: open a new session).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: A repeated key returns the stored response of the first call.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    NotFound:
+      description: not-found.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details.
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          description: Problem type slug, for example placement-in-doubt.
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+    Tier:
+      type: string
+      enum: [SAME_DAY, NEXT_DAY, TWO_DAY, STANDARD]
+    SessionState:
+      type: string
+      enum: [OPEN, AUTHORIZING, DECLINED, PLACING, REQUOTE_REQUIRED, COMPLETED, EXPIRED, FAILED]
+    OpenSessionRequest:
+      type: object
+      required: [cartId, shopperId, shipToAddressId]
+      properties:
+        cartId:
+          type: string
+        shopperId:
+          type: string
+        shipToAddressId:
+          type: string
+          description: Reference to a saved address in customer-ordering (NG1); never the address itself.
+    ConfirmSessionRequest:
+      type: object
+      required: [paymentMethodToken]
+      properties:
+        paymentMethodToken:
+          type: string
+          description: The PSP token from the hosted fields; never a card number.
+    SessionLine:
+      type: object
+      required: [lineNo, catalogItemId, quantity]
+      properties:
+        lineNo:
+          type: integer
+          minimum: 1
+        catalogItemId:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+    SessionGroup:
+      type: object
+      required: [groupNo, offerId, tier, lineNos, amountMinor]
+      properties:
+        groupNo:
+          type: integer
+          minimum: 1
+        offerId:
+          type: string
+        tier:
+          $ref: '#/components/schemas/Tier'
+        lineNos:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+        amountMinor:
+          type: integer
+          format: int64
+          minimum: 0
+    RequotedOffer:
+      type: object
+      required: [offerId, groupNo, tier, deliverByEarliest, deliverByLatest, expiresAt]
+      properties:
+        offerId:
+          type: string
+        groupNo:
+          type: integer
+          minimum: 1
+        tier:
+          $ref: '#/components/schemas/Tier'
+        deliverByEarliest:
+          type: string
+          format: date
+        deliverByLatest:
+          type: string
+          format: date
+        expiresAt:
+          type: string
+          format: date-time
+    CheckoutSession:
+      type: object
+      required: [sessionId, state, cartId, cartVersion, shopperId, shipToAddressId, lines, groups, quoteExpiresAt, version]
+      properties:
+        sessionId:
+          type: string
+        state:
+          $ref: '#/components/schemas/SessionState'
+        cartId:
+          type: string
+        cartVersion:
+          type: integer
+          minimum: 1
+        shopperId:
+          type: string
+        shipToAddressId:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionLine'
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionGroup'
+        priceQuoteId:
+          type: string
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        totalMinor:
+          type: integer
+          format: int64
+          minimum: 0
+        quoteExpiresAt:
+          type: string
+          format: date-time
+        authorizationId:
+          type: string
+          nullable: true
+        orderId:
+          type: string
+          nullable: true
+          description: Set when the network's place-order step succeeds (COMPLETED).
+        requotedOffers:
+          type: array
+          description: Present in REQUOTE_REQUIRED; the BFF writes them into the cart as a new quote.
+          items:
+            $ref: '#/components/schemas/RequotedOffer'
+        failureCode:
+          type: string
+          nullable: true
+          description: Present in FAILED.
+        version:
+          type: integer
+          minimum: 1

@@ -1,0 +1,647 @@
+asyncapi: 3.0.0
+info:
+  title: checkout Domain Events
+  version: 1.0.0
+  contact:
+    name: checkout maintainers
+    url: https://github.com/IQVO/checkout
+    email: checkout@iqvo.example.com
+  license:
+    name: UNLICENSED
+  tags:
+  - name: checkout
+    description: The checkout bounded context (retail network, storefront tier).
+  - name: checkoutsession
+    description: Events raised by the CheckoutSession aggregate.
+  description: 'Event catalog for the **checkout** bounded context of the storefront (Supporting subdomain): the purchase saga from review
+    to placed order (ADR 0001, ADR 0002).
+
+
+    **Published.** Seven events. `CheckoutCompleted` is the one integration event: it goes to `retailnetwork.checkout.events` and is consumed
+    by shopping-cart (CloseOnCheckoutCompleted) and customer-payments (BindOrderOnCheckoutCompleted). `CheckoutOpened`, `CheckoutDeclined`,
+    `CheckoutRequoteRequired`, `CheckoutFailed`, `CheckoutSessionExpired` and `CheckoutPlacementInDoubt` are analytics-only and go to
+    `retailnetwork.checkout.analytics` (decision H7). ConfirmSession and RecordAuthorization raise nothing. Every event goes through a
+    **transactional outbox**; an always-on relay drains them to Kafka, at-least-once. The types are catalogued in ADR 0004.
+
+
+    **Consumed.** Nothing: the saga is driven by REST calls and policies; sibling data is read synchronously (ADR 0003).
+
+
+    **Envelope (mandatory).** CloudEvents 1.0, structured content mode, Kafka header `content-type: application/cloudevents+json; charset=UTF-8`.
+    `specversion`, `id`, `source` (`/retailnetwork/checkout`), `type`, `subject` (the sessionId), `time`, `datacontenttype` (`application/json`)
+    and `dataschema` (`urn:retailnetwork:checkout:<events|analytics>:<EventName>:v1`) are all required. Kafka key = the subject. Type =
+    `com.retailnetwork.storefront.checkout.checkoutsession.<EventName>`. A breaking payload change is a new `.v2` type, never a mutation.
+
+
+    **Conventions.** `data` is camelCase; instants are RFC 3339 UTC; money is integer minor units; enums are UPPER_SNAKE.'
+servers:
+  production:
+    host: '{brokers}'
+    protocol: kafka
+    description: Retail-network Kafka broker (host supplied by the deployment environment via KAFKA_BROKERS).
+    variables:
+      brokers:
+        default: kafka.retail-network.internal:9092
+defaultContentType: application/cloudevents+json
+channels:
+  checkoutEvents:
+    address: retailnetwork.checkout.events
+    title: checkout integration topic
+    description: 'Integration topic: CheckoutCompleted, consumed by shopping-cart and customer-payments. Written by the outbox relay; key =
+      the sessionId. Every message carries the CloudEvents content-type header.'
+    messages:
+      CheckoutCompleted:
+        $ref: '#/components/messages/CheckoutCompleted'
+  checkoutAnalytics:
+    address: retailnetwork.checkout.analytics
+    title: checkout analytics topic
+    description: 'Analytics-only topic: no network consumer. Written by the outbox relay; key = the sessionId.'
+    messages:
+      CheckoutOpened:
+        $ref: '#/components/messages/CheckoutOpened'
+      CheckoutDeclined:
+        $ref: '#/components/messages/CheckoutDeclined'
+      CheckoutRequoteRequired:
+        $ref: '#/components/messages/CheckoutRequoteRequired'
+      CheckoutFailed:
+        $ref: '#/components/messages/CheckoutFailed'
+      CheckoutSessionExpired:
+        $ref: '#/components/messages/CheckoutSessionExpired'
+      CheckoutPlacementInDoubt:
+        $ref: '#/components/messages/CheckoutPlacementInDoubt'
+operations:
+  publishCheckoutEvents:
+    action: send
+    title: Publish CheckoutCompleted
+    summary: Publish CheckoutCompleted through the transactional outbox.
+    description: The service sends the integration event of the CheckoutSession aggregate to `retailnetwork.checkout.events`. Consumers route on the full `type`.
+    tags:
+    - name: checkoutsession
+    channel:
+      $ref: '#/channels/checkoutEvents'
+    messages:
+    - $ref: '#/channels/checkoutEvents/messages/CheckoutCompleted'
+  publishCheckoutAnalytics:
+    action: send
+    title: Publish checkout analytics events
+    summary: Publish the six analytics-only events through the transactional outbox.
+    description: The service sends CheckoutOpened, CheckoutDeclined, CheckoutRequoteRequired, CheckoutFailed, CheckoutSessionExpired and CheckoutPlacementInDoubt to `retailnetwork.checkout.analytics`.
+    tags:
+    - name: checkoutsession
+    channel:
+      $ref: '#/channels/checkoutAnalytics'
+    messages:
+    - $ref: '#/channels/checkoutAnalytics/messages/CheckoutOpened'
+    - $ref: '#/channels/checkoutAnalytics/messages/CheckoutDeclined'
+    - $ref: '#/channels/checkoutAnalytics/messages/CheckoutRequoteRequired'
+    - $ref: '#/channels/checkoutAnalytics/messages/CheckoutFailed'
+    - $ref: '#/channels/checkoutAnalytics/messages/CheckoutSessionExpired'
+    - $ref: '#/channels/checkoutAnalytics/messages/CheckoutPlacementInDoubt'
+components:
+  messages:
+    CheckoutCompleted:
+      name: CheckoutCompleted
+      title: A checkout session was completed and its order placed.
+      summary: A checkout session was completed and its order placed.
+      description: '`type` = `com.retailnetwork.storefront.checkout.checkoutsession.CheckoutCompleted`; subject and key = the sessionId. Raised
+        by RecordPlaced (ConfirmSession or ResolveInDoubtPlacements) in the same transaction as the outbox row. Integration event: consumed
+        by shopping-cart (closes the cart) and customer-payments (binds the order to the authorization and the allocations per group).'
+      contentType: application/cloudevents+json
+      tags:
+      - name: checkoutsession
+      payload:
+        $ref: '#/components/schemas/CheckoutCompletedEvent'
+      examples:
+      - name: checkoutCompleted
+        summary: A two-group purchase of 21.00 placed as order-77.
+        payload:
+          specversion: '1.0'
+          id: 7d2e9c41-5f6b-4a3e-9c2d-1e8f0a5b6c7d
+          source: /retailnetwork/checkout
+          type: com.retailnetwork.storefront.checkout.checkoutsession.CheckoutCompleted
+          subject: sess-9001
+          time: '2026-10-25T14:20:00Z'
+          datacontenttype: application/json
+          dataschema: urn:retailnetwork:checkout:events:CheckoutCompleted:v1
+          data:
+            sessionId: sess-9001
+            orderId: order-77
+            shopperId: shopper-1
+            cartId: cart-100234
+            authorizationId: auth-55
+            currency: USD
+            totalMinor: 2100
+            groups:
+            - groupNo: 1
+              tier: NEXT_DAY
+              amountMinor: 1365
+            - groupNo: 2
+              tier: STANDARD
+              amountMinor: 735
+            completedAt: '2026-10-25T14:20:00Z'
+    CheckoutOpened:
+      name: CheckoutOpened
+      title: A checkout session was opened.
+      summary: A checkout session was opened.
+      description: '`type` = `com.retailnetwork.storefront.checkout.checkoutsession.CheckoutOpened`; subject and key = the sessionId. Raised by
+        OpenSession. Analytics only.'
+      contentType: application/cloudevents+json
+      tags:
+      - name: checkoutsession
+      payload:
+        $ref: '#/components/schemas/CheckoutOpenedEvent'
+      examples:
+      - name: checkoutOpened
+        summary: A session for cart-100234 with the binding total 21.00.
+        payload:
+          specversion: '1.0'
+          id: 7d2e9c41-5f6b-4a3e-9c2d-1e8f0a5b6c7d
+          source: /retailnetwork/checkout
+          type: com.retailnetwork.storefront.checkout.checkoutsession.CheckoutOpened
+          subject: sess-9001
+          time: '2026-10-25T14:03:11Z'
+          datacontenttype: application/json
+          dataschema: urn:retailnetwork:checkout:analytics:CheckoutOpened:v1
+          data:
+            sessionId: sess-9001
+            cartId: cart-100234
+            shopperId: shopper-1
+            totalMinor: 2100
+            openedAt: '2026-10-25T14:03:11Z'
+    CheckoutDeclined:
+      name: CheckoutDeclined
+      title: The payment authorization was declined.
+      summary: The payment authorization was declined.
+      description: '`type` = `com.retailnetwork.storefront.checkout.checkoutsession.CheckoutDeclined`; subject and key = the sessionId. Raised by
+        RecordDecline, and also when the authorized amount is not the quote total (reason `authorization-mismatch`, the authorization is voided).
+        The session stays open for another token while the quote is valid. Analytics only.'
+      contentType: application/cloudevents+json
+      tags:
+      - name: checkoutsession
+      payload:
+        $ref: '#/components/schemas/CheckoutDeclinedEvent'
+      examples:
+      - name: checkoutDeclined
+        summary: The card was declined for insufficient funds.
+        payload:
+          specversion: '1.0'
+          id: 7d2e9c41-5f6b-4a3e-9c2d-1e8f0a5b6c7d
+          source: /retailnetwork/checkout
+          type: com.retailnetwork.storefront.checkout.checkoutsession.CheckoutDeclined
+          subject: sess-9001
+          time: '2026-10-25T14:04:00Z'
+          datacontenttype: application/json
+          dataschema: urn:retailnetwork:checkout:analytics:CheckoutDeclined:v1
+          data:
+            sessionId: sess-9001
+            reason: insufficient-funds
+            at: '2026-10-25T14:04:00Z'
+    CheckoutRequoteRequired:
+      name: CheckoutRequoteRequired
+      title: The network re-quoted the offers; the session needs a requote.
+      summary: The network re-quoted the offers; the session needs a requote.
+      description: '`type` = `com.retailnetwork.storefront.checkout.checkoutsession.CheckoutRequoteRequired`; subject and key = the sessionId.
+        Raised by RecordRequoteRequired after a definitive 409 of the place-order step (offer-not-quotable, promise-capacity-exhausted,
+        book-closed); the authorization void is owed in the same change. Analytics only.'
+      contentType: application/cloudevents+json
+      tags:
+      - name: checkoutsession
+      payload:
+        $ref: '#/components/schemas/CheckoutRequoteRequiredEvent'
+      examples:
+      - name: checkoutRequoteRequired
+        summary: One re-quoted offer for group 1.
+        payload:
+          specversion: '1.0'
+          id: 7d2e9c41-5f6b-4a3e-9c2d-1e8f0a5b6c7d
+          source: /retailnetwork/checkout
+          type: com.retailnetwork.storefront.checkout.checkoutsession.CheckoutRequoteRequired
+          subject: sess-9001
+          time: '2026-10-25T14:05:00Z'
+          datacontenttype: application/json
+          dataschema: urn:retailnetwork:checkout:analytics:CheckoutRequoteRequired:v1
+          data:
+            sessionId: sess-9001
+            requotedOffers:
+            - offerId: offer-9
+              groupNo: 1
+              tier: SAME_DAY
+              deliverByEarliest: '2026-10-26'
+              deliverByLatest: '2026-10-27'
+              expiresAt: '2026-10-25T15:05:00Z'
+            at: '2026-10-25T14:05:00Z'
+    CheckoutFailed:
+      name: CheckoutFailed
+      title: The session failed.
+      summary: The session failed.
+      description: '`type` = `com.retailnetwork.storefront.checkout.checkoutsession.CheckoutFailed`; subject and key = the sessionId. Raised by
+        RecordFailure: the place-order step answered 400/422 (code `place-order-rejected`, a contract bug, alert) or the in-doubt placement was
+        given up at 22 h (code `placement-unresolved`). The authorization void is owed. Analytics only.'
+      contentType: application/cloudevents+json
+      tags:
+      - name: checkoutsession
+      payload:
+        $ref: '#/components/schemas/CheckoutFailedEvent'
+      examples:
+      - name: checkoutFailed
+        summary: The network rejected the request.
+        payload:
+          specversion: '1.0'
+          id: 7d2e9c41-5f6b-4a3e-9c2d-1e8f0a5b6c7d
+          source: /retailnetwork/checkout
+          type: com.retailnetwork.storefront.checkout.checkoutsession.CheckoutFailed
+          subject: sess-9001
+          time: '2026-10-25T14:05:00Z'
+          datacontenttype: application/json
+          dataschema: urn:retailnetwork:checkout:analytics:CheckoutFailed:v1
+          data:
+            sessionId: sess-9001
+            code: place-order-rejected
+            at: '2026-10-25T14:05:00Z'
+    CheckoutSessionExpired:
+      name: CheckoutSessionExpired
+      title: An open or declined session expired with its price quote.
+      summary: An open or declined session expired with its price quote.
+      description: '`type` = `com.retailnetwork.storefront.checkout.checkoutsession.CheckoutSessionExpired`; subject and key = the sessionId.
+        Raised by the policy ExpireOnQuoteExpiry (decisions H1, H7). Analytics only.'
+      contentType: application/cloudevents+json
+      tags:
+      - name: checkoutsession
+      payload:
+        $ref: '#/components/schemas/CheckoutSessionExpiredEvent'
+      examples:
+      - name: checkoutSessionExpired
+        summary: The quote lapsed 15 minutes after the session opened.
+        payload:
+          specversion: '1.0'
+          id: 7d2e9c41-5f6b-4a3e-9c2d-1e8f0a5b6c7d
+          source: /retailnetwork/checkout
+          type: com.retailnetwork.storefront.checkout.checkoutsession.CheckoutSessionExpired
+          subject: sess-9001
+          time: '2026-10-25T14:18:00Z'
+          datacontenttype: application/json
+          dataschema: urn:retailnetwork:checkout:analytics:CheckoutSessionExpired:v1
+          data:
+            sessionId: sess-9001
+            at: '2026-10-25T14:18:00Z'
+    CheckoutPlacementInDoubt:
+      name: CheckoutPlacementInDoubt
+      title: The place-order outcome is unknown.
+      summary: The place-order outcome is unknown.
+      description: '`type` = `com.retailnetwork.storefront.checkout.checkoutsession.CheckoutPlacementInDoubt`; subject and key = the sessionId.
+        Raised by RecordPlacementInDoubt the first time the outcome is unknown (later passes of ResolveInDoubtPlacements raise nothing). The
+        session stays PLACING (the semantic lock). Analytics only (decision H7).'
+      contentType: application/cloudevents+json
+      tags:
+      - name: checkoutsession
+      payload:
+        $ref: '#/components/schemas/CheckoutPlacementInDoubtEvent'
+      examples:
+      - name: checkoutPlacementInDoubt
+        summary: customer-ordering timed out.
+        payload:
+          specversion: '1.0'
+          id: 7d2e9c41-5f6b-4a3e-9c2d-1e8f0a5b6c7d
+          source: /retailnetwork/checkout
+          type: com.retailnetwork.storefront.checkout.checkoutsession.CheckoutPlacementInDoubt
+          subject: sess-9001
+          time: '2026-10-25T14:05:20Z'
+          datacontenttype: application/json
+          dataschema: urn:retailnetwork:checkout:analytics:CheckoutPlacementInDoubt:v1
+          data:
+            sessionId: sess-9001
+            placingSince: '2026-10-25T14:05:00Z'
+            at: '2026-10-25T14:05:20Z'
+  schemas:
+    Instant:
+      type: string
+      format: date-time
+      description: RFC 3339 instant in UTC.
+    Tier:
+      type: string
+      enum: [SAME_DAY, NEXT_DAY, TWO_DAY, STANDARD]
+    CheckoutOpenedEvent:
+      type: object
+      required: [specversion, id, source, type, subject, time, datacontenttype, dataschema, data]
+      properties:
+        specversion:
+          type: string
+          const: '1.0'
+        id:
+          type: string
+          description: CloudEvents id (UUID); stable across relay retries. Consumers dedupe on it.
+        source:
+          type: string
+          const: /retailnetwork/checkout
+        type:
+          type: string
+          const: com.retailnetwork.storefront.checkout.checkoutsession.CheckoutOpened
+        subject:
+          type: string
+          description: The sessionId; also the Kafka message key.
+        time:
+          $ref: '#/components/schemas/Instant'
+        datacontenttype:
+          type: string
+          const: application/json
+        dataschema:
+          type: string
+          const: urn:retailnetwork:checkout:analytics:CheckoutOpened:v1
+        data:
+          $ref: '#/components/schemas/CheckoutOpenedData'
+    CheckoutDeclinedEvent:
+      type: object
+      required: [specversion, id, source, type, subject, time, datacontenttype, dataschema, data]
+      properties:
+        specversion:
+          type: string
+          const: '1.0'
+        id:
+          type: string
+          description: CloudEvents id (UUID); stable across relay retries. Consumers dedupe on it.
+        source:
+          type: string
+          const: /retailnetwork/checkout
+        type:
+          type: string
+          const: com.retailnetwork.storefront.checkout.checkoutsession.CheckoutDeclined
+        subject:
+          type: string
+          description: The sessionId; also the Kafka message key.
+        time:
+          $ref: '#/components/schemas/Instant'
+        datacontenttype:
+          type: string
+          const: application/json
+        dataschema:
+          type: string
+          const: urn:retailnetwork:checkout:analytics:CheckoutDeclined:v1
+        data:
+          $ref: '#/components/schemas/CheckoutDeclinedData'
+    CheckoutPlacementInDoubtEvent:
+      type: object
+      required: [specversion, id, source, type, subject, time, datacontenttype, dataschema, data]
+      properties:
+        specversion:
+          type: string
+          const: '1.0'
+        id:
+          type: string
+          description: CloudEvents id (UUID); stable across relay retries. Consumers dedupe on it.
+        source:
+          type: string
+          const: /retailnetwork/checkout
+        type:
+          type: string
+          const: com.retailnetwork.storefront.checkout.checkoutsession.CheckoutPlacementInDoubt
+        subject:
+          type: string
+          description: The sessionId; also the Kafka message key.
+        time:
+          $ref: '#/components/schemas/Instant'
+        datacontenttype:
+          type: string
+          const: application/json
+        dataschema:
+          type: string
+          const: urn:retailnetwork:checkout:analytics:CheckoutPlacementInDoubt:v1
+        data:
+          $ref: '#/components/schemas/CheckoutPlacementInDoubtData'
+    CheckoutCompletedEvent:
+      type: object
+      required: [specversion, id, source, type, subject, time, datacontenttype, dataschema, data]
+      properties:
+        specversion:
+          type: string
+          const: '1.0'
+        id:
+          type: string
+          description: CloudEvents id (UUID); stable across relay retries. Consumers dedupe on it.
+        source:
+          type: string
+          const: /retailnetwork/checkout
+        type:
+          type: string
+          const: com.retailnetwork.storefront.checkout.checkoutsession.CheckoutCompleted
+        subject:
+          type: string
+          description: The sessionId; also the Kafka message key.
+        time:
+          $ref: '#/components/schemas/Instant'
+        datacontenttype:
+          type: string
+          const: application/json
+        dataschema:
+          type: string
+          const: urn:retailnetwork:checkout:events:CheckoutCompleted:v1
+        data:
+          $ref: '#/components/schemas/CheckoutCompletedData'
+    CheckoutRequoteRequiredEvent:
+      type: object
+      required: [specversion, id, source, type, subject, time, datacontenttype, dataschema, data]
+      properties:
+        specversion:
+          type: string
+          const: '1.0'
+        id:
+          type: string
+          description: CloudEvents id (UUID); stable across relay retries. Consumers dedupe on it.
+        source:
+          type: string
+          const: /retailnetwork/checkout
+        type:
+          type: string
+          const: com.retailnetwork.storefront.checkout.checkoutsession.CheckoutRequoteRequired
+        subject:
+          type: string
+          description: The sessionId; also the Kafka message key.
+        time:
+          $ref: '#/components/schemas/Instant'
+        datacontenttype:
+          type: string
+          const: application/json
+        dataschema:
+          type: string
+          const: urn:retailnetwork:checkout:analytics:CheckoutRequoteRequired:v1
+        data:
+          $ref: '#/components/schemas/CheckoutRequoteRequiredData'
+    CheckoutFailedEvent:
+      type: object
+      required: [specversion, id, source, type, subject, time, datacontenttype, dataschema, data]
+      properties:
+        specversion:
+          type: string
+          const: '1.0'
+        id:
+          type: string
+          description: CloudEvents id (UUID); stable across relay retries. Consumers dedupe on it.
+        source:
+          type: string
+          const: /retailnetwork/checkout
+        type:
+          type: string
+          const: com.retailnetwork.storefront.checkout.checkoutsession.CheckoutFailed
+        subject:
+          type: string
+          description: The sessionId; also the Kafka message key.
+        time:
+          $ref: '#/components/schemas/Instant'
+        datacontenttype:
+          type: string
+          const: application/json
+        dataschema:
+          type: string
+          const: urn:retailnetwork:checkout:analytics:CheckoutFailed:v1
+        data:
+          $ref: '#/components/schemas/CheckoutFailedData'
+    CheckoutSessionExpiredEvent:
+      type: object
+      required: [specversion, id, source, type, subject, time, datacontenttype, dataschema, data]
+      properties:
+        specversion:
+          type: string
+          const: '1.0'
+        id:
+          type: string
+          description: CloudEvents id (UUID); stable across relay retries. Consumers dedupe on it.
+        source:
+          type: string
+          const: /retailnetwork/checkout
+        type:
+          type: string
+          const: com.retailnetwork.storefront.checkout.checkoutsession.CheckoutSessionExpired
+        subject:
+          type: string
+          description: The sessionId; also the Kafka message key.
+        time:
+          $ref: '#/components/schemas/Instant'
+        datacontenttype:
+          type: string
+          const: application/json
+        dataschema:
+          type: string
+          const: urn:retailnetwork:checkout:analytics:CheckoutSessionExpired:v1
+        data:
+          $ref: '#/components/schemas/CheckoutSessionExpiredData'
+    CheckoutOpenedData:
+      type: object
+      required: [sessionId, cartId, shopperId, totalMinor, openedAt]
+      properties:
+        sessionId:
+          type: string
+        cartId:
+          type: string
+        shopperId:
+          type: string
+        totalMinor:
+          type: integer
+          format: int64
+          minimum: 0
+        openedAt:
+          $ref: '#/components/schemas/Instant'
+    CheckoutDeclinedData:
+      type: object
+      required: [sessionId, reason, at]
+      properties:
+        sessionId:
+          type: string
+        reason:
+          type: string
+        at:
+          $ref: '#/components/schemas/Instant'
+    CheckoutPlacementInDoubtData:
+      type: object
+      required: [sessionId, placingSince, at]
+      properties:
+        sessionId:
+          type: string
+        placingSince:
+          $ref: '#/components/schemas/Instant'
+        at:
+          $ref: '#/components/schemas/Instant'
+    CheckoutFailedData:
+      type: object
+      required: [sessionId, code, at]
+      properties:
+        sessionId:
+          type: string
+        code:
+          type: string
+        at:
+          $ref: '#/components/schemas/Instant'
+    CheckoutSessionExpiredData:
+      type: object
+      required: [sessionId, at]
+      properties:
+        sessionId:
+          type: string
+        at:
+          $ref: '#/components/schemas/Instant'
+    CheckoutCompletedData:
+      type: object
+      required: [sessionId, orderId, shopperId, cartId, authorizationId, currency, totalMinor, groups, completedAt]
+      properties:
+        sessionId:
+          type: string
+        orderId:
+          type: string
+        shopperId:
+          type: string
+        cartId:
+          type: string
+        authorizationId:
+          type: string
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        totalMinor:
+          type: integer
+          format: int64
+          minimum: 0
+        groups:
+          type: array
+          description: The allocation of the authorization per shipment group.
+          items:
+            type: object
+            required: [groupNo, tier, amountMinor]
+            properties:
+              groupNo:
+                type: integer
+                minimum: 1
+              tier:
+                $ref: '#/components/schemas/Tier'
+              amountMinor:
+                type: integer
+                format: int64
+                minimum: 0
+        completedAt:
+          $ref: '#/components/schemas/Instant'
+    CheckoutRequoteRequiredData:
+      type: object
+      required: [sessionId, requotedOffers, at]
+      properties:
+        sessionId:
+          type: string
+        requotedOffers:
+          type: array
+          items:
+            type: object
+            required: [offerId, groupNo, tier, deliverByEarliest, deliverByLatest, expiresAt]
+            properties:
+              offerId:
+                type: string
+              groupNo:
+                type: integer
+                minimum: 1
+              tier:
+                $ref: '#/components/schemas/Tier'
+              deliverByEarliest:
+                type: string
+                format: date
+              deliverByLatest:
+                type: string
+                format: date
+              expiresAt:
+                $ref: '#/components/schemas/Instant'
+        at:
+          $ref: '#/components/schemas/Instant'

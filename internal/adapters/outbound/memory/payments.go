@@ -14,6 +14,9 @@ type Payments struct {
 	// Script holds the next answers of Authorize (oldest first); when empty an
 	// authorization for the requested total is returned.
 	Script []AuthStep
+	// AuthErr, when set, is returned by every Authorize (an outage), before the
+	// Script is consulted.
+	AuthErr error
 	// VoidErr, when set, is returned by Void.
 	VoidErr error
 	// AuthKeys and VoidKeys are the idempotency keys received, in order.
@@ -41,6 +44,9 @@ func (p *Payments) Authorize(_ context.Context, key string, req exchange.Authori
 	defer p.mu.Unlock()
 	p.AuthKeys = append(p.AuthKeys, key)
 	p.Tokens = append(p.Tokens, req.Token)
+	if p.AuthErr != nil {
+		return exchange.Authorization{}, p.AuthErr
+	}
 	if a, ok := p.first[key]; ok {
 		return a, nil
 	}

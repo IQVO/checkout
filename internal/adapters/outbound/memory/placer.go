@@ -14,6 +14,9 @@ type Placer struct {
 	// Script holds the next answers of Place (oldest first); when empty the
 	// order is placed as order-<sessionId>.
 	Script []PlaceStep
+	// Fail, when set, is returned by every Place (a placement that stays in
+	// doubt until it is cleared), before the Script is consulted.
+	Fail error
 	// Calls are the (sessionId, body) pairs received, in order.
 	Calls []PlaceCall
 }
@@ -38,6 +41,9 @@ func (p *Placer) Place(_ context.Context, sessionID string, body []byte) (exchan
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.Calls = append(p.Calls, PlaceCall{SessionID: sessionID, Body: append([]byte(nil), body...)})
+	if p.Fail != nil {
+		return exchange.PlaceOutcome{}, p.Fail
+	}
 	if len(p.Script) == 0 {
 		return exchange.PlaceOutcome{Kind: exchange.OutcomePlaced, OrderID: "order-" + sessionID}, nil
 	}
