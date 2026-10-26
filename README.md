@@ -4,7 +4,7 @@ Storefront (e-commerce) domain of the retail-network organisation, bounded conte
 
 The purchase saga [14][16]: one transaction across price, payment and the network's promise confirmation. Authorize before placing the order (compensatable: void), place the order (pivot), then retriable steps via events. PLACING is the semantic lock [15]: while the place-order outcome is unknown there is no void and no new attempt. Holds shopperId and shipToAddressId references, never PII; the stored placement request is PII-free so it can be replayed byte for byte.
 
-Status: under construction. The design lives in [warehouse-docs](https://iqvo.github.io/warehouse-docs/storefront/) `storefront/model/model.yaml` (single source of truth).
+Status: built to the model (domain, application, Postgres, Kafka, REST, MCP, BDD); the PR is awaiting review. The design lives in [warehouse-docs](https://iqvo.github.io/warehouse-docs/storefront/) `storefront/model/model.yaml` (single source of truth).
 This repository is part of the storefront domain: it consumes the retail network's Open Host Service routes and its
 published `retailnetwork.*` events; it never calls an in-org or restricted network route.
 

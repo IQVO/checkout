@@ -5,22 +5,23 @@ paths:
   - "apis/openapi/**"
 ---
 
-<!-- TEMPLATE (warehouse-harness-template v2): fill in for THIS repo. -->
 # REST API (inbound adapter)
 
-List every route -> use case mapping, kept in sync with `apis/openapi.yaml`
-(the `docs-api-drift` CI job fails if generated docs disagree with this
-file's own spec, but this file itself is documentation for an agent, not
-generated -- keep it manually accurate).
+Every route -> use case mapping, kept in sync with `apis/openapi.yaml` (routes live
+in `internal/adapters/inbound/http/server.go`). This file is documentation for an
+agent, not generated: keep it manually accurate.
 
-- `<METHOD> <path>`    -> `<UseCaseName>`
-- ...
+- `POST /checkout-sessions` -> `OpenSession` (201; 409 `cart-not-checkout-ready`; 422 `offer-not-quotable`; 502 `upstream-contract-violation`; 503 `<sibling>-unavailable`)
+- `GET /checkout-sessions/{sessionId}` -> `GetSession` (the polling endpoint while PLACING)
+- `POST /checkout-sessions/{sessionId}:confirm` -> `ConfirmSession` (200 definitive; 202 while AUTHORIZING or PLACING; 409 `session-closed`, `authorization-mismatch`, `placement-in-doubt`, `void-pending`; 422 `price-quote-expired`)
+- `GET /healthz` (liveness) and `GET /readyz` (drain gate + Postgres ping + Kafka metadata)
 
 ## Conventions
 
-- Error shape: <RFC 7807 problem+json? custom envelope? state it>.
-- Auth: <this fleet's fleet-wide REST+MCP auth was deliberately reverted
-  2026-09-11 and is unauthenticated pending a fresh decision -- state
-  whichever is true for this repo, and keep
-  `internal/architecture/fitness_test.go`'s TestNoAuthMiddlewareReintroduced
-  in sync if that ever changes>.
+- Error shape: RFC 9457 `application/problem+json`, `type` = `/problems/<slug>`
+  (catalogue in `errors.go`); every POST needs an `Idempotency-Key` (missing = 400
+  `idempotency-key-required`, same key with another body = 422
+  `idempotency-key-reused`, replay marked `Idempotent-Replayed: true`); a NUL in the
+  path, query or body is a 400 before any key is recorded.
+- Auth: none. Fleet-wide auth was deliberately reverted 2026-09-11; do not add
+  bearer/JWT/API-key middleware (`TestNoAuthMiddlewareReintroduced`).
