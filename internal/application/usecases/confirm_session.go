@@ -21,6 +21,12 @@ type ConfirmSession struct{ Deps }
 // 202). ErrAuthorizationMismatch is returned after the mismatching
 // authorization was marked for voiding.
 func (u ConfirmSession) Execute(ctx context.Context, sessionID, token string) (views.Session, error) {
+	v, err := u.execute(ctx, sessionID, token)
+	u.recordOutcome(ctx, v, err)
+	return v, err
+}
+
+func (u ConfirmSession) execute(ctx context.Context, sessionID, token string) (views.Session, error) {
 	s, err := u.mutate(ctx, checkoutsession.ID(sessionID), func(s *checkoutsession.CheckoutSession) error {
 		return s.Confirm(token, u.now())
 	})

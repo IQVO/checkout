@@ -84,3 +84,24 @@ type IDGenerator interface {
 type Alerter interface {
 	Alert(ctx context.Context, code, sessionID, detail string)
 }
+
+// Outcomes of one ConfirmSession attempt, as SessionMetrics.SessionConfirmed
+// receives them.
+const (
+	ConfirmCompleted       = "completed"
+	ConfirmDeclined        = "declined"
+	ConfirmRequoteRequired = "requote-required"
+	ConfirmFailed          = "failed"
+	ConfirmInDoubt         = "in-doubt"
+	ConfirmRefused         = "refused"
+)
+
+// SessionMetrics records the business outcome of every ConfirmSession attempt
+// (Tier 2 of the fleet metrics convention). The use case calls it once per
+// attempt with the outcome the shopper was answered with and, for every outcome
+// but completed and requote-required, a stable low-cardinality reason slug. The
+// implementation lives in internal/adapters/outbound/telemetry; a nil
+// Deps.Metrics records nothing.
+type SessionMetrics interface {
+	SessionConfirmed(ctx context.Context, outcome, reason string)
+}

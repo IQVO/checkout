@@ -70,7 +70,7 @@ func (w *world) api() *httptest.Server {
 		w.srv = httptest.NewServer(httpadapter.NewRouter(&httpadapter.Server{
 			OpenSession: usecases.OpenSession{Deps: d}, ConfirmSession: usecases.ConfirmSession{Deps: d}, GetSession: usecases.GetSession{Deps: d},
 			IdempotencyStore: w.store.Idempotency(), Clock: d.Clock,
-		}))
+		}, nil, ""))
 	}
 	return w.srv
 }
