@@ -50,6 +50,7 @@ import (
 
 	inboundhttp "github.com/IQVO/checkout/internal/adapters/inbound/http"
 	outboundkafka "github.com/IQVO/checkout/internal/adapters/outbound/kafka"
+	"github.com/IQVO/checkout/internal/adapters/outbound/telemetry"
 )
 
 // shutdownTimeout bounds the HTTP server's graceful drain.
@@ -99,6 +100,13 @@ func run(ctx context.Context) error {
 		return err
 	}
 	defer closeAdapters()
+
+	// The business counter binds to the MeterProvider telemetry.Setup installed.
+	sessionMetrics, err := telemetry.NewSessionMetrics()
+	if err != nil {
+		return err
+	}
+	ad.deps.Metrics = sessionMetrics
 
 	readiness := newReadiness(ad.pool.Ping, rt.brokers)
 	httpServer := &http.Server{

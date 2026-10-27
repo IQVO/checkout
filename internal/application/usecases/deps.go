@@ -35,6 +35,9 @@ type Deps struct {
 	Alerter  ports.Alerter
 	// Log receives anomalies that are acknowledged, not failed. Nil discards them.
 	Log *slog.Logger
+	// Metrics records the business outcome of each confirm attempt; nil records
+	// nothing, so unit tests need no wiring.
+	Metrics ports.SessionMetrics
 }
 
 // commandAttempts is how often a command runs when another writer got in
@@ -52,6 +55,19 @@ func (d Deps) persist(ctx context.Context, s *checkoutsession.CheckoutSession) e
 	}
 	return d.publish(ctx, events)
 }
+
+// metrics returns the configured SessionMetrics or a no-op.
+func (d Deps) metrics() ports.SessionMetrics {
+	if d.Metrics != nil {
+		return d.Metrics
+	}
+	return noMetrics{}
+}
+
+// noMetrics is the SessionMetrics of a Deps without one.
+type noMetrics struct{}
+
+func (noMetrics) SessionConfirmed(context.Context, string, string) {}
 
 func (d Deps) publish(ctx context.Context, events []shared.Event) error {
 	if err := d.Outbox.Append(ctx, events...); err != nil {
