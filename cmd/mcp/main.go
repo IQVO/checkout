@@ -16,6 +16,10 @@
 //	DATABASE_URL             REQUIRED. Postgres DSN (the service database cmd/api owns)
 //	MIGRATIONS_DATABASE_URL  direct DSN for the boot migrations (default DATABASE_URL)
 //	LOG_LEVEL                debug | info | warn | error (default info)
+//	OTEL_SERVICE_NAME        service.name of spans and metrics (default checkout-mcp)
+//	OTEL_EXPORTER_OTLP_ENDPOINT  Collector OTLP/gRPC endpoint (default telemetry.DefaultEndpoint); export never blocks
+//	SERVICE_VERSION          service.version (default dev)
+//	ENVIRONMENT              deployment.environment.name (default local)
 package main
 
 import (
@@ -31,6 +35,7 @@ import (
 
 	inboundmcp "github.com/IQVO/checkout/internal/adapters/inbound/mcp"
 	"github.com/IQVO/checkout/internal/adapters/outbound/postgres"
+	"github.com/IQVO/checkout/internal/adapters/outbound/telemetry"
 	"github.com/IQVO/checkout/internal/bootretry"
 )
 
@@ -52,6 +57,15 @@ func run() error {
 	logger := newLogger(getenv("LOG_LEVEL", "info"))
 	slog.SetDefault(logger)
 
+	// Telemetry comes up before the router is built (otelchimetric binds the
+	// global MeterProvider at construction) and is flushed last.
+	tel := loadTelemetryEnv(os.Getenv)
+	flushTelemetry, err := startTelemetry(logger, tel)
+	if err != nil {
+		return err
+	}
+	defer flushTelemetry()
+
 	databaseURL := os.Getenv("DATABASE_URL")
 	deps, closeAdapters, err := buildDeps(context.Background(), logger, databaseURL, getenv("MIGRATIONS_DATABASE_URL", databaseURL))
 	if err != nil {
@@ -61,7 +75,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:              getenv("MCP_ADDR", ":8090"),
-		Handler:           newRouter(inboundmcp.Handler(inboundmcp.NewServer(deps))),
+		Handler:           newRouter(inboundmcp.Handler(inboundmcp.NewServer(deps)), logger, tel.serviceName),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	return serveMCP(logger, srv)
@@ -131,7 +145,7 @@ func newLogger(level string) *slog.Logger {
 	default:
 		lvl = slog.LevelInfo
 	}
-	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
+	return slog.New(telemetry.WithTraceContext(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl})))
 }
 
 func getenv(key, fallback string) string {

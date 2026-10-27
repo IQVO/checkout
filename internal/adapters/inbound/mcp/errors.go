@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -19,11 +20,12 @@ func toolError(slug, detail string) error {
 // mapError turns a use-case error into the tool error the model sees. The one
 // read can only fail by not finding the session (ports.ErrNotFound); anything
 // else is logged and reported generically so infrastructure details (DSNs,
-// SQL) never reach the model.
-func mapError(err error) error {
+// SQL) never reach the model. The log uses the request context so the record
+// carries the trace_id of the tool call.
+func mapError(ctx context.Context, err error) error {
 	if errors.Is(err, ports.ErrNotFound) {
 		return toolError("not-found", err.Error())
 	}
-	slog.Error("mcp tool failed with an unexpected error", "error", err)
+	slog.ErrorContext(ctx, "mcp tool failed with an unexpected error", "error", err)
 	return toolError("internal-error", "an unexpected internal error occurred")
 }

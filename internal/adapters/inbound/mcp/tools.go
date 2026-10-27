@@ -104,7 +104,7 @@ func (d Deps) getCheckoutSession(ctx context.Context, in sessionIDInput) (sessio
 	}
 	view, err := d.GetSession.Execute(ctx, in.SessionID)
 	if err != nil {
-		return sessionView{}, mapError(err)
+		return sessionView{}, mapError(ctx, err)
 	}
 	return toSession(view), nil
 }
