@@ -118,7 +118,7 @@ paths:
       description: >-
         ConfirmSession with the PSP payment method token (never a card
         number). AUTHORIZING calls customer-payments POST
-        /payment-authorizations (key <sessionId>:auth:<attempt>, the attempt
+        /payment-authorizations (key `<sessionId>:auth:<attempt>`, the attempt
         counter grows on every retry after a decline; allocations per group);
         the authorized amount must equal the quote total
         (ErrAuthorizationMismatch). PLACING persists the placement request and
