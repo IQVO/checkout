@@ -1,0 +1,13 @@
+# Used by `helm lint` / `ct lint` (chart-testing): the chart refuses to render
+# without the mandatory values (database source, Kafka brokers and the five
+# sibling base URLs). Dummy DSN/URLs, no password; nothing here is ever dialled.
+database:
+  url: "postgres://u@example.invalid:5432/db"
+kafka:
+  brokers: "kafka.example.invalid:9092"
+config:
+  shoppingCartUrl: "http://shopping-cart.example.invalid"
+  deliveryPromiseUrl: "http://delivery-promise.example.invalid"
+  pricingUrl: "http://pricing.example.invalid"
+  customerPaymentsUrl: "http://customer-payments.example.invalid"
+  customerOrderingUrl: "http://customer-ordering.example.invalid"

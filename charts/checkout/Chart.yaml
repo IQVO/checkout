@@ -1,0 +1,12 @@
+apiVersion: v2
+name: checkout
+description: Checkout - the storefront purchase saga (authorize the payment, place the customer order as the pivot, confirm the delivery promise; compensating voids and sweeps); publishes on retailnetwork.checkout.events and retailnetwork.checkout.analytics
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/IQVO/checkout
+keywords:
+  - ddd
+  - hexagonal-architecture
+  - retail-network
+  - golang
