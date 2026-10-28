@@ -1,0 +1,51 @@
+# Non-secret configuration of the api component, mirrored from the env the
+# Deployment renders and mounted into the api container with envFrom (the
+# explicit env entries win for the same key); the Deployment's checksum/config
+# annotation rolls the pods whenever any of it changes. Every key is a variable
+# cmd/api reads (tests/render_test.sh). A DSN never lands here: DATABASE_URL and
+# MIGRATIONS_DATABASE_URL live in the Secret (templates/secret.yaml or
+# database.existingSecret).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "checkout.fullname" . }}
+  labels:
+    {{- include "checkout.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+data:
+  HTTP_ADDR: {{ .Values.config.httpAddr | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  KAFKA_BROKERS: {{ .Values.kafka.brokers | quote }}
+  SHOPPING_CART_URL: {{ .Values.config.shoppingCartUrl | quote }}
+  DELIVERY_PROMISE_URL: {{ .Values.config.deliveryPromiseUrl | quote }}
+  PRICING_URL: {{ .Values.config.pricingUrl | quote }}
+  CUSTOMER_PAYMENTS_URL: {{ .Values.config.customerPaymentsUrl | quote }}
+  CUSTOMER_ORDERING_URL: {{ .Values.config.customerOrderingUrl | quote }}
+  {{- if ne (toString .Values.config.siblingTimeout) "" }}
+  SIBLING_TIMEOUT: {{ .Values.config.siblingTimeout | quote }}
+  {{- end }}
+  {{- if ne (toString .Values.config.customerOrderingTimeout) "" }}
+  CUSTOMER_ORDERING_TIMEOUT: {{ .Values.config.customerOrderingTimeout | quote }}
+  {{- end }}
+  {{- if ne (toString .Values.config.indoubtSweepInterval) "" }}
+  INDOUBT_SWEEP_INTERVAL: {{ .Values.config.indoubtSweepInterval | quote }}
+  {{- end }}
+  {{- if ne (toString .Values.config.stuckSweepInterval) "" }}
+  STUCK_SWEEP_INTERVAL: {{ .Values.config.stuckSweepInterval | quote }}
+  {{- end }}
+  {{- if ne (toString .Values.config.voidSweepInterval) "" }}
+  VOID_SWEEP_INTERVAL: {{ .Values.config.voidSweepInterval | quote }}
+  {{- end }}
+  {{- if ne (toString .Values.config.expirySweepInterval) "" }}
+  EXPIRY_SWEEP_INTERVAL: {{ .Values.config.expirySweepInterval | quote }}
+  {{- end }}
+  {{- if ne (toString .Values.config.purgeSweepInterval) "" }}
+  PURGE_SWEEP_INTERVAL: {{ .Values.config.purgeSweepInterval | quote }}
+  {{- end }}
+  {{- if ne (toString .Values.config.outboxRelayInterval) "" }}
+  OUTBOX_RELAY_INTERVAL: {{ .Values.config.outboxRelayInterval | quote }}
+  {{- end }}
+  OUTBOX_MAX_ATTEMPTS: {{ .Values.config.outboxMaxAttempts | quote }}
+  {{- if ne (toString .Values.config.shutdownDrainDelay) "" }}
+  SHUTDOWN_DRAIN_DELAY: {{ .Values.config.shutdownDrainDelay | quote }}
+  {{- end }}

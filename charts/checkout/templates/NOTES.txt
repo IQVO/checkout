@@ -1,0 +1,35 @@
+{{ .Chart.Name }} has been deployed.
+
+Release:   {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+Service:   {{ include "checkout.fullname" . }} ({{ .Values.service.type }}, port {{ .Values.service.port }})
+
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+Ingress:   http://{{ .host }}{{ (index .paths 0).path }}
+{{- end }}
+{{- else if .Values.gatewayApi.enabled }}
+Gateway API HTTPRoute enabled - routed via the parentRefs/hosts configured in gatewayApi.*.
+{{- else }}
+To reach it locally:
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "checkout.fullname" . }} 8080:{{ .Values.service.port }}
+  curl http://localhost:8080/healthz
+{{- end }}
+
+The checkout saga (authorize -> place the order -> confirm the promise) relays its
+events from the transactional outbox onto retailnetwork.checkout.events and
+retailnetwork.checkout.analytics ({{ .Values.kafka.brokers }}). Postgres and Kafka
+are the only runtime; this context consumes no topic. The saga calls five siblings
+synchronously: shopping-cart ({{ .Values.config.shoppingCartUrl }}), delivery-promise
+({{ .Values.config.deliveryPromiseUrl }}), pricing ({{ .Values.config.pricingUrl }}),
+customer-payments ({{ .Values.config.customerPaymentsUrl }}) and customer-ordering
+({{ .Values.config.customerOrderingUrl }}).
+{{- if .Values.mcp.enabled }}
+
+The read-only MCP server (ADR 0005) is ON: {{ include "checkout.mcpFullname" . }}
+({{ .Values.mcp.service.type }}, port {{ .Values.mcp.service.port }}), Streamable HTTP /mcp.
+{{- if .Values.mcp.route.enabled }}
+Exposed through the gateway at {{ .Values.mcp.route.path }} (prefix rewritten to /mcp).
+{{- end }}
+{{- end }}
