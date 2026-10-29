@@ -20,3 +20,9 @@ Format: one entry per lesson, stated as a fact with its evidence, not as an inst
   switch (below a 96% gate), then 97.17-97.25% after rewriting as an if-chain with zero test changes. If a
   pure classification function's mutator coverage comes in surprisingly low despite full branch coverage,
   try the if-chain rewrite before assuming tests are missing a case.
+- An outbound sibling call must never run inside a database transaction in the saga: the use cases save the state they
+  act from (AUTHORIZING, PLACING with the stored request), call out, then save the outcome. A crash in between leaves a
+  row a policy can find (`ResolveStuckAuthorizations`, `ResolveInDoubtPlacements`); a call inside the transaction would
+  hold a row lock across a network timeout and lose the in-doubt marker on rollback.
+- A resolver that races the request is normal: after any `Record*` conflict (`ErrSessionClosed`, `ErrIllegalTransition`,
+  `ErrConcurrentUpdate`) the use case re-reads the session and answers with it instead of failing (`superseded`).
