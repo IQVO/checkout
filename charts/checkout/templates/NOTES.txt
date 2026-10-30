@@ -33,3 +33,12 @@ The read-only MCP server (ADR 0005) is ON: {{ include "checkout.mcpFullname" . }
 Exposed through the gateway at {{ .Values.mcp.route.path }} (prefix rewritten to /mcp).
 {{- end }}
 {{- end }}
+{{- if .Values.a2a.enabled }}
+
+The read-only A2A agent (ADR 0007) is ON: {{ include "checkout.a2aFullname" . }}
+({{ .Values.a2a.service.type }}, port {{ .Values.a2a.service.port }}), Agent2Agent JSON-RPC at / and /a2a,
+Agent Card at /.well-known/agent-card.json.
+{{- if .Values.a2a.route.enabled }}
+Exposed through the gateway at {{ .Values.a2a.route.path }} (prefix rewritten to /).
+{{- end }}
+{{- end }}
