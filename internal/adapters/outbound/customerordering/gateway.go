@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -14,13 +15,35 @@ import (
 )
 
 // Gateway implements ports.OrderPlacer over HTTP.
-type Gateway struct{ c *httpx.Client }
+type Gateway struct {
+	c      *httpx.Client
+	logger *slog.Logger
+	zones  *zones
+}
 
 var _ ports.OrderPlacer = (*Gateway)(nil)
 
+// Option configures a Gateway.
+type Option func(*Gateway)
+
+// WithLogger sets the logger of the gateway's warnings (an unusable requoted
+// offer time zone); the default is slog.Default().
+func WithLogger(logger *slog.Logger) Option {
+	return func(g *Gateway) {
+		if logger != nil {
+			g.logger = logger
+		}
+	}
+}
+
 // New builds a Gateway for the customer-ordering base URL.
-func New(baseURL string, client *http.Client) *Gateway {
-	return &Gateway{c: httpx.New(baseURL, client)}
+func New(baseURL string, client *http.Client, opts ...Option) *Gateway {
+	g := &Gateway{c: httpx.New(baseURL, client), logger: slog.Default()}
+	for _, opt := range opts {
+		opt(g)
+	}
+	g.zones = newZones(g.logger)
+	return g
 }
 
 // BuildRequest implements ports.OrderPlacer.
@@ -46,6 +69,9 @@ type offerDTO struct {
 	DeliverByEarliest time.Time `json:"deliverByEarliest"`
 	DeliverByLatest   time.Time `json:"deliverByLatest"`
 	ExpiresAt         time.Time `json:"expiresAt"`
+	// TimeZone is the IANA zone of the destination (optional; absent reads
+	// as UTC). The window's instants become calendar days in it (ADR 0008).
+	TimeZone string `json:"timeZone,omitempty"`
 }
 
 type conflictDTO struct {
@@ -67,7 +93,7 @@ func (g *Gateway) Place(ctx context.Context, sessionID string, body []byte) (exc
 	case resp.OK():
 		return placed(resp.Body)
 	case resp.Status == http.StatusConflict && definitiveConflicts[resp.Slug()]:
-		return requote(resp.Body)
+		return g.requote(resp.Body)
 	case resp.Status == http.StatusBadRequest || resp.Status == http.StatusUnprocessableEntity:
 		return exchange.PlaceOutcome{Kind: exchange.OutcomeRejected, Detail: fmt.Sprintf("%d %s: %s", resp.Status, resp.Slug(), resp.Detail())}, nil
 	}
@@ -82,16 +108,21 @@ func placed(payload []byte) (exchange.PlaceOutcome, error) {
 	return exchange.PlaceOutcome{Kind: exchange.OutcomePlaced, OrderID: o.OrderID}, nil
 }
 
-func requote(payload []byte) (exchange.PlaceOutcome, error) {
+// requote turns the 409's requoted offers into the cart's offers. The window
+// is a span of instants; the shopper reads it as days of the DESTINATION's
+// calendar, so each bound is formatted in the offer's timeZone (UTC when it
+// is absent or unusable, ADR 0008).
+func (g *Gateway) requote(payload []byte) (exchange.PlaceOutcome, error) {
 	var c conflictDTO
 	if err := json.Unmarshal(payload, &c); err != nil {
 		return exchange.PlaceOutcome{}, fmt.Errorf("%w: undecodable conflict: %w", ports.ErrOrderingUnavailable, err)
 	}
 	out := exchange.PlaceOutcome{Kind: exchange.OutcomeRequote}
 	for _, o := range c.RequotedOffers {
+		loc := g.zones.location(o.TimeZone)
 		out.Offers = append(out.Offers, cs.RequotedOffer{
 			OfferID: o.OfferID, GroupNo: o.GroupNo, Tier: cs.Tier(o.Tier),
-			DeliverByEarliest: o.DeliverByEarliest.UTC().Format(time.DateOnly), DeliverByLatest: o.DeliverByLatest.UTC().Format(time.DateOnly),
+			DeliverByEarliest: o.DeliverByEarliest.In(loc).Format(time.DateOnly), DeliverByLatest: o.DeliverByLatest.In(loc).Format(time.DateOnly),
 			ExpiresAt: o.ExpiresAt.UTC(),
 		})
 	}

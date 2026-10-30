@@ -62,7 +62,7 @@ func buildAdapters(ctx context.Context, rt runtimeEnv, logger *slog.Logger) (ada
 		Offers:   deliverypromise.New(rt.urls["DELIVERY_PROMISE_URL"], client),
 		Quoter:   pricing.New(rt.urls["PRICING_URL"], client),
 		Payments: customerpayments.New(rt.urls["CUSTOMER_PAYMENTS_URL"], client),
-		Placer:   customerordering.New(rt.urls["CUSTOMER_ORDERING_URL"], &http.Client{Timeout: rt.orderingTimeout}),
+		Placer:   customerordering.New(rt.urls["CUSTOMER_ORDERING_URL"], &http.Client{Timeout: rt.orderingTimeout}, customerordering.WithLogger(logger)),
 		Outbox:   outbox, UoW: postgres.NewUnitOfWork(pool), Clock: ad.clock, IDs: ad.ids,
 		Alerter: alerts.Logger{Log: logger}, Log: logger,
 	}
