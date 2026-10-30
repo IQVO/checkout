@@ -118,7 +118,7 @@ paths:
       description: >-
         ConfirmSession with the PSP payment method token (never a card
         number). AUTHORIZING calls customer-payments POST
-        /payment-authorizations (key <sessionId>:auth:<attempt>, the attempt
+        /payment-authorizations (key `<sessionId>:auth:<attempt>`, the attempt
         counter grows on every retry after a decline; allocations per group);
         the authorized amount must equal the quote total
         (ErrAuthorizationMismatch). PLACING persists the placement request and
@@ -292,9 +292,17 @@ components:
         deliverByEarliest:
           type: string
           format: date
+          description: >-
+            Calendar day of the destination: the requoted window's earliest
+            instant read in the offer's time zone (UTC when the network names
+            none, ADR 0008).
         deliverByLatest:
           type: string
           format: date
+          description: >-
+            Calendar day of the destination: the requoted window's latest
+            instant read in the offer's time zone (UTC when the network names
+            none, ADR 0008).
         expiresAt:
           type: string
           format: date-time
