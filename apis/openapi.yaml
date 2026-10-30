@@ -292,9 +292,17 @@ components:
         deliverByEarliest:
           type: string
           format: date
+          description: >-
+            Calendar day of the destination: the requoted window's earliest
+            instant read in the offer's time zone (UTC when the network names
+            none, ADR 0008).
         deliverByLatest:
           type: string
           format: date
+          description: >-
+            Calendar day of the destination: the requoted window's latest
+            instant read in the offer's time zone (UTC when the network names
+            none, ADR 0008).
         expiresAt:
           type: string
           format: date-time

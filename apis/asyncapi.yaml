@@ -638,9 +638,15 @@ components:
               deliverByEarliest:
                 type: string
                 format: date
+                description: >-
+                  Calendar day of the destination (the window's earliest instant
+                  in the offer's time zone, UTC when none is named; ADR 0008).
               deliverByLatest:
                 type: string
                 format: date
+                description: >-
+                  Calendar day of the destination (the window's latest instant
+                  in the offer's time zone, UTC when none is named; ADR 0008).
               expiresAt:
                 $ref: '#/components/schemas/Instant'
         at:
