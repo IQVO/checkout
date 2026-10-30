@@ -1,5 +1,7 @@
 # checkout
 
+[![CI](https://github.com/IQVO/checkout/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/IQVO/checkout/actions/workflows/ci.yml?query=branch%3Adevelop) [![coverage gate](https://img.shields.io/badge/coverage%20gate-90%25-brightgreen)](https://github.com/IQVO/checkout/blob/develop/Makefile) [![Go](https://img.shields.io/badge/go-1.27.3-00ADD8?logo=go&logoColor=white)](https://github.com/IQVO/checkout/blob/develop/go.mod) [![release](https://img.shields.io/github/v/release/IQVO/checkout?sort=semver)](https://github.com/IQVO/checkout/releases) [![docs](https://img.shields.io/badge/docs-iqvo.github.io-blue)](https://iqvo.github.io/checkout/) [![license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/IQVO/checkout/blob/develop/LICENSE)
+
 Storefront (e-commerce) domain of the retail-network organisation, bounded context **Checkout** (Supporting, storefront tier).
 
 The purchase saga [14][16]: one transaction across price, payment and the network's promise confirmation. Authorize before placing the order (compensatable: void), place the order (pivot), then retriable steps via events. PLACING is the semantic lock [15]: while the place-order outcome is unknown there is no void and no new attempt. Holds shopperId and shipToAddressId references, never PII; the stored placement request is PII-free so it can be replayed byte for byte.
