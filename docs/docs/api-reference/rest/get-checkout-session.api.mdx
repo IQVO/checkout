@@ -1,0 +1,70 @@
+---
+id: get-checkout-session
+title: "Get a checkout session"
+description: "GetSession. While PLACING after an in-doubt placement this is the polling endpoint the BFF uses until a definitive outcome."
+sidebar_label: "Get a checkout session"
+hide_title: true
+hide_table_of_contents: true
+api: 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
+sidebar_class_name: "get api-method"
+info_path: docs/api-reference/rest/checkout-api
+custom_edit_url: null
+hide_send_button: true
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+import Translate from "@docusaurus/Translate";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get a checkout session"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/checkout-sessions/{sessionId}"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+GetSession. While PLACING after an in-doubt placement this is the polling endpoint the BFF uses until a definitive outcome.
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+>
+  <Translate id="theme.openapi.request.title">Request</Translate>
+</Heading>
+
+<ParamsDetails
+  {...require("./get-checkout-session.ParamsDetails.json")}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  {...require("./get-checkout-session.RequestSchema.json")}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  {...require("./get-checkout-session.StatusCodes.json")}
+>
+  
+</StatusCodes>
+
+
+      
