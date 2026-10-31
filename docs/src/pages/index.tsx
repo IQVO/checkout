@@ -35,7 +35,13 @@ function HomepageHeader() {
           {siteConfig.title}
         </Heading>
         <p className={styles.heroSubtitle}>{siteConfig.tagline}</p>
-        <p className={styles.heroLead}>TODO-LEAD</p>
+        <p className={styles.heroLead}>
+          Checkout runs the purchase saga of the storefront: one transaction across the binding
+          price quote, the payment authorization and the retail network's promise confirmation.
+          It authorizes first, places the order as the pivot, and holds an unknown outcome in a
+          semantic lock until a replay settles it. These pages cover how to run, configure,
+          operate, debug and test it, and the REST, event, MCP and A2A contracts.
+        </p>
         <div className={styles.buttons}>
           <Link className="button button--primary button--lg" to="/docs/overview/introduction">
             Read the docs

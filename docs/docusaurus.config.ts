@@ -6,7 +6,7 @@ import type * as OpenApiPlugin from 'docusaurus-plugin-openapi-docs';
 const config: Config = {
   title: 'Checkout',
   tagline:
-    'Checkout: a Supporting bounded context of the storefront domain (warehouse-systems).',
+    'The storefront purchase saga: authorize, place the order, settle every outcome.',
   favicon: 'img/favicon.svg',
 
   future: {
