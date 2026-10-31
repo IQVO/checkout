@@ -1,6 +1,6 @@
 # Checkout runbook
 
-Checkout is the retail network's storefront purchase saga: it opens a checkout session from a shopper's cart, authorizes the payment with customer-payments, places the customer order with customer-ordering as the pivot and confirms the delivery promise, with compensating voids and five clock-driven sweep policies cleaning up the sessions that stall on the way (`README.md`, `docs/adr/0001`, `docs/adr/0003`). It deploys as two binaries from one image: the `api` (always on) and the read-only MCP server (optional, ADR 0005). This runbook covers both and what to do when they misbehave.
+Checkout is the retail network's storefront purchase saga: it opens a checkout session from a shopper's cart, authorizes the payment with customer-payments, places the customer order with customer-ordering as the pivot and confirms the delivery promise, with compensating voids and five clock-driven sweep policies cleaning up the sessions that stall on the way (`README.md`, `docs/adr/0001`, `docs/adr/0003`). It deploys as up to three binaries from one image: the `api` (always on), the read-only MCP server (optional, ADR 0005) and the read-only A2A agent (optional, ADR 0007). This runbook covers all and what to do when they misbehave.
 
 ## Runtime shape (two Deployments from one image)
 
@@ -13,6 +13,8 @@ The `api` Deployment (`charts/checkout/templates/deployment.yaml`) runs `cmd/api
 There is no in-memory mode and no worker that can be switched off. If the relay or a policy returns on its own, the process exits non-zero so the orchestrator replaces the pod (`cmd/api/main.go`).
 
 The optional `mcp` Deployment (`charts/checkout/templates/mcp-deployment.yaml`, default off) runs `cmd/mcp` (ADR 0005): a **read-only** MCP server serving the one tool `get_checkout_session` over the SAME `GetSession` use case the REST adapter uses, over Streamable HTTP `/mcp` on `MCP_ADDR` (default `:8090`) with an open, unauthenticated `/healthz`. It shares the service database (the same Secret), runs the idempotent embedded migrations at boot like `cmd/api`, and never starts the relay or a policy, never dials Kafka and never calls a sibling. There is NO auth of any kind (fleet-wide decision, ADR 0005): access control is the in-cluster ClusterIP boundary plus whatever the gateway allows.
+
+The optional `a2a` Deployment (`charts/checkout/templates/a2a-deployment.yaml`, default off) runs `cmd/a2a` (ADR 0007): a **read-only** Agent2Agent agent with ONE skill, `checkout_session_status`, over the SAME `GetSession` use case, as JSON-RPC at `/` and `/a2a` on `A2A_ADDR` (default `:8093`), the Agent Card at `/.well-known/agent-card.json` and an open `/healthz`. Same shape as the mcp server: shared database Secret, boot migrations, no relay, no policy, no Kafka, no sibling, NO auth (ADR 0007). `A2A_AGENT_URL` is mandatory (absolute http(s) URL, refused at boot otherwise); the pod logs `a2a agent exited with error` naming it.
 
 Graceful shutdown of the api is sequential (`cmd/api/main.go`, `cmd/api/workers.go`): `/readyz` flips to 503 → wait `SHUTDOWN_DRAIN_DELAY` (default 5s) → drain HTTP (10s bound) → stop the five schedulers one after the other (10s each, 50s) → stop the relay (10s) → close the pool. Worst case 75s; the chart refuses a `terminationGracePeriodSeconds` that does not exceed drain + 70s (default 80, `charts/checkout/values.yaml`).
 
@@ -74,6 +76,8 @@ Env vars `cmd/api` reads (contract: `cmd/api/main.go` header comment; rendered i
 | `OTEL_SERVICE_NAME` | `otel.serviceName` | `checkout` | rendered only with `otel.enabled=true` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `otel.endpoint` | Collector address | rendered only with `otel.enabled=true` |
 
+The a2a component reads only: `A2A_ADDR` (`a2a.httpAddr`), `A2A_AGENT_URL` (`a2a.agentUrl`, default the in-cluster Service DNS), `LOG_LEVEL`, `DATABASE_URL` / `MIGRATIONS_DATABASE_URL` (the same Secret), `SERVICE_VERSION` (`a2a.serviceVersion`, else the image tag), `ENVIRONMENT` (`a2a.environment`), `OTEL_SERVICE_NAME` (`<otel.serviceName>-a2a`) and `OTEL_EXPORTER_OTLP_ENDPOINT`. Never Kafka, a publisher, siblings, schedulers or the relay (the selector and render tests fail the chart if rendered).
+
 The mcp component reads only: `MCP_ADDR` (`mcp.httpAddr`), `LOG_LEVEL`, `DATABASE_URL` / `MIGRATIONS_DATABASE_URL` (the same Secret as the api), `SERVICE_VERSION` (`mcp.serviceVersion`, else the image tag), `ENVIRONMENT` (`mcp.environment`), `OTEL_SERVICE_NAME` (`<otel.serviceName>-mcp`) and `OTEL_EXPORTER_OTLP_ENDPOINT`. Anything else (Kafka, siblings, schedulers, relay) is never rendered into it — the selector test fails the chart if it is.
 
 Behavior — Idempotency-Key middleware (`internal/adapters/inbound/http/idempotency.go`):
@@ -129,8 +133,9 @@ Behavior — Idempotency-Key middleware (`internal/adapters/inbound/http/idempot
 
 ## Operational actions
 
-- Restart: `kubectl -n warehouse-systems rollout restart deploy/checkout` (and `deploy/checkout-mcp` when the mcp component is enabled).
+- Restart: `kubectl -n warehouse-systems rollout restart deploy/checkout` (and `deploy/checkout-mcp` / `deploy/checkout-a2a` when those components are enabled).
 - Logs: Loki, `app=checkout` (JSON slog on stdout; raise `config.logLevel` to `debug` for a noisy pod).
 - In-cluster REST: Service port 80 → container 8080; the external path is the gateway route `/api/checkout` (prefix stripped, `gatewayApi.*`).
 - MCP endpoint: with `mcp.enabled=true` and `mcp.route.enabled=true`, AI clients reach the read-only server at the gateway path **`/api/mcp/checkout`**, prefix rewritten to `/mcp` (the SDK's canonical endpoint) on Service `checkout-mcp:8090`. In-cluster without the route: `http://checkout-mcp:8090/mcp`; health at `/healthz`. NO auth of any kind — the ClusterIP boundary is the access control (ADR 0005).
+- A2A endpoint: with `a2a.enabled=true` and `a2a.route.enabled=true`, agents reach the read-only agent at **`/api/a2a/checkout`**, prefix rewritten to `/` on Service `checkout-a2a:8093`; the card is at `/api/a2a/checkout/.well-known/agent-card.json`. Requests must carry the `A2A-Version` header. In-cluster: `http://checkout-a2a:8093/`. NO auth (ADR 0007).
 - Scale: HPA off by default (`autoscaling.api`); N>1 is safe for the relay (row claims) and the saga writes (optimistic state transitions), but has not been load-tested (`charts/checkout/values.yaml`).

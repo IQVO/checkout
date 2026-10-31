@@ -42,7 +42,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 
 {{/*
 Selector labels. Every Deployment and Service also pins
-app.kubernetes.io/component (api, mcp): a Service selecting on these two alone
+app.kubernetes.io/component (api, mcp, a2a): a Service selecting on these two alone
 would select every component of the release.
 */}}
 {{- define "checkout.selectorLabels" -}}
@@ -66,6 +66,13 @@ Fully qualified name of the MCP deployment/service/route (ADR 0005).
 */}}
 {{- define "checkout.mcpFullname" -}}
 {{- include "checkout.fullname" . }}-mcp
+{{- end }}
+
+{{/*
+Fully qualified name of the A2A deployment/service/route (ADR 0007).
+*/}}
+{{- define "checkout.a2aFullname" -}}
+{{- include "checkout.fullname" . }}-a2a
 {{- end }}
 
 {{/*

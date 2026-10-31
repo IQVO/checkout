@@ -20,7 +20,7 @@ base=(--set database.url=postgres://u@example.invalid:5432/db
   --set kafka.brokers=kafka.example.invalid:9092)
 for s in "${siblings[@]}"; do base+=(--set "config.${s%%:*}=${s#*:}"); done
 # Every optional value set, so every env var cmd/api can read is rendered.
-everything=(--set config.siblingTimeout=3s --set config.customerOrderingTimeout=10s
+everything=(--set a2a.enabled=true --set config.siblingTimeout=3s --set config.customerOrderingTimeout=10s
   --set config.indoubtSweepInterval=10s --set config.stuckSweepInterval=20s
   --set config.voidSweepInterval=30s --set config.expirySweepInterval=40s
   --set config.purgeSweepInterval=2h --set config.outboxRelayInterval=2s
@@ -148,7 +148,7 @@ fi
 if grep -qE '[A-Z_]*CONSUMER_GROUP' <<<"$render_all"; then fail "checkout consumes no topic: the render must carry no *_CONSUMER_GROUP"; fi
 
 # Only the api component renders by default: one Deployment, one Service.
-for stray in mcp frontend projector reports analytics; do
+for stray in mcp a2a frontend projector reports analytics; do
   if grep -qE "app.kubernetes.io/component: .*$stray" <<<"$(helm template "$release" "$chart_dir" "${base[@]}")"; then
     fail "the default render must not contain a $stray component"
   fi
@@ -247,12 +247,56 @@ grep -q 'value: /api/mcp/checkout' <<<"$mcp_route" || fail "the mcp route must c
 grep -q 'replacePrefixMatch: /mcp' <<<"$mcp_route" || fail "the mcp route must rewrite the prefix to /mcp (the SDK's canonical endpoint)"
 grep -q "name: $release-mcp" <<<"$mcp_route" || fail "the mcp route must target the mcp Service"
 
+# --- the optional component (ADR 0007 a2a) ------------------------------------
+# Read-only like mcp: own env, never the api ConfigMap, never Kafka or a
+# publisher, never a sibling URL. Off by default (asserted with the stray loop).
+a2a_dep="$(helm template "$release" "$chart_dir" "${base[@]}" --set a2a.enabled=true --show-only templates/a2a-deployment.yaml)"
+grep -q 'app.kubernetes.io/component: a2a' <<<"$a2a_dep" || fail "the a2a Deployment was not rendered with a2a.enabled=true"
+grep -q 'command: \["/app/a2a"\]' <<<"$a2a_dep" || fail "the a2a Deployment must run /app/a2a"
+if grep -q 'configMapRef:' <<<"$a2a_dep"; then fail "a2a-deployment.yaml must not mount the api ConfigMap"; fi
+if grep -Eq 'name: (KAFKA_BROKERS|EVENT_PUBLISHER|SHOPPING_CART_URL|DELIVERY_PROMISE_URL|PRICING_URL|CUSTOMER_PAYMENTS_URL|CUSTOMER_ORDERING_URL|SIBLING_TIMEOUT|CUSTOMER_ORDERING_TIMEOUT|[A-Z]+_SWEEP_INTERVAL|OUTBOX_[A-Z_]+|SHUTDOWN_DRAIN_DELAY|[A-Z_]*CONSUMER_GROUP)$' <<<"$a2a_dep"; then
+  fail "the a2a Deployment must not get Kafka/publisher/relay/sibling/scheduler env (read-only, never dials Kafka, calls no sibling)"
+fi
+# Every mandatory variable the binary names ("<VAR> is required") must render.
+# The regex allows digits: A2A_AGENT_URL must not be read as A_AGENT_URL.
+a2a_sources=()
+for f in "$repo_dir"/cmd/a2a/*.go; do [[ "$f" == *_test.go ]] || a2a_sources+=("$f"); done
+# shellcheck disable=SC2207
+a2a_required=($(grep -hoE '[A-Z][A-Z0-9_]+ is required' "${a2a_sources[@]}" | sed -E 's/ is required//' | sort -u || true))
+(( ${#a2a_required[@]} >= 2 )) || fail "found only ${#a2a_required[@]} mandatory env names in cmd/a2a; the scan is looking in the wrong place"
+for v in A2A_AGENT_URL DATABASE_URL; do
+  printf '%s\n' "${a2a_required[@]}" | grep -qx "$v" || fail "cmd/a2a no longer names $v as '<VAR> is required'; the chart scan would drop it"
+done
+# shellcheck disable=SC2207
+a2a_vars=($(binary_env_of "$repo_dir"/cmd/a2a/main.go "$repo_dir"/cmd/a2a/router.go "$repo_dir"/cmd/a2a/telemetry.go))
+(( ${#a2a_vars[@]} >= 4 )) || fail "found only ${#a2a_vars[@]} env literals in cmd/a2a; the scan is looking in the wrong place"
+assert_env_rendered "$a2a_dep" "the a2a Deployment" "${a2a_required[@]}" "${a2a_vars[@]}" DATABASE_URL MIGRATIONS_DATABASE_URL A2A_ADDR A2A_AGENT_URL LOG_LEVEL
+grep -A4 'name: DATABASE_URL$' <<<"$a2a_dep" | grep -q 'secretKeyRef:' || fail "the a2a DATABASE_URL must come from the same Secret"
+# A2A_AGENT_URL defaults to the in-cluster Service DNS (namespace-derived, so
+# pattern-matched) and is overridable through a2a.agentUrl.
+a2a_url="$(grep -A1 'name: A2A_AGENT_URL$' <<<"$a2a_dep" | grep 'value:' || true)"
+[[ "$a2a_url" =~ value:\ \"http://$release-a2a\.[a-z0-9-]+\.svc\.cluster\.local:8093/\"$ ]] \
+  || fail "A2A_AGENT_URL must default to http://$release-a2a.<ns>.svc.cluster.local:8093/, got: ${a2a_url:-<missing>}"
+a2a_dep_url="$(helm template "$release" "$chart_dir" "${base[@]}" --set a2a.enabled=true --set a2a.agentUrl=https://gw.example.invalid/api/a2a/checkout/ --show-only templates/a2a-deployment.yaml)"
+grep -A1 'name: A2A_AGENT_URL$' <<<"$a2a_dep_url" | grep -q 'value: "https://gw.example.invalid/api/a2a/checkout/"' || fail "a2a.agentUrl must override A2A_AGENT_URL"
+a2a_svc="$(helm template "$release" "$chart_dir" "${base[@]}" --set a2a.enabled=true --show-only templates/a2a-service.yaml)"
+grep -q 'kind: Service' <<<"$a2a_svc" || fail "the a2a Service was not rendered with a2a.enabled=true"
+grep -q 'app.kubernetes.io/component: a2a' <<<"$a2a_svc" || fail "the a2a Service must select component=a2a"
+grep -q 'port: 8093' <<<"$a2a_svc" || fail "the a2a Service must listen on 8093"
+
+# The a2a route is a SEPARATE switch: a2a on alone exposes nothing.
+a2a_noroute="$(helm template "$release" "$chart_dir" "${base[@]}" --set a2a.enabled=true)"
+if grep -q 'kind: HTTPRoute' <<<"$a2a_noroute"; then fail "the a2a HTTPRoute must not render while a2a.route.enabled is false"; fi
+a2a_route="$(helm template "$release" "$chart_dir" "${base[@]}" --set a2a.enabled=true --set a2a.route.enabled=true --show-only templates/a2a-route.yaml)"
+grep -q 'value: /api/a2a/checkout' <<<"$a2a_route" || fail "the a2a route must carry its configured host path"
+grep -q 'replacePrefixMatch: /$' <<<"$a2a_route" || fail "the a2a route must rewrite the prefix to / (the JSON-RPC endpoint)"
+grep -q "name: $release-a2a" <<<"$a2a_route" || fail "the a2a route must target the a2a Service"
 # ALL components render TOGETHER (ct lint's values file).
 together="$(helm template "$release" "$chart_dir" -f "$chart_dir/ci/all-components-values.yaml")"
-for component in api mcp; do
+for component in api mcp a2a; do
   grep -q "app.kubernetes.io/component: $component\$" <<<"$together" || fail "the full render lacks the $component component"
 done
-[[ "$(grep -c '^kind: Deployment' <<<"$together")" == 2 ]] || fail "the full render must carry the api and mcp Deployments"
-[[ "$(grep -c '^kind: Service$' <<<"$together")" == 2 ]] || fail "the full render must carry the api and mcp Services"
+[[ "$(grep -c '^kind: Deployment' <<<"$together")" == 3 ]] || fail "the full render must carry the api, mcp and a2a Deployments"
+[[ "$(grep -c '^kind: Service$' <<<"$together")" == 3 ]] || fail "the full render must carry the api, mcp and a2a Services"
 
 echo "PASS: checkout chart render assertions"

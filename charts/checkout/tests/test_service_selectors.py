@@ -70,10 +70,13 @@ ENABLE_EVERYTHING = BASE + [
     "--set", "database.migrationsUrl=postgres://u@example.invalid:5432/direct",
 ]
 
-# The optional component of ADR 0005 (mcp) on top of everything the api renders.
+# The optional components of ADR 0005 (mcp) and ADR 0007 (a2a) on top of
+# everything the api renders.
 ENABLE_ALL_COMPONENTS = ENABLE_EVERYTHING + [
     "--set", "mcp.enabled=true",
     "--set", "mcp.route.enabled=true",
+    "--set", "a2a.enabled=true",
+    "--set", "a2a.route.enabled=true",
 ]
 
 # The MCP server is read-only: no Kafka, no outbox relay, no saga policy, no
@@ -88,6 +91,12 @@ MCP_STRAY = {
 }
 MCP_ENV = (
     "MCP_ADDR", "LOG_LEVEL", "SERVICE_VERSION", "ENVIRONMENT",
+    "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_SERVICE_NAME",
+    "DATABASE_URL", "MIGRATIONS_DATABASE_URL",
+)
+# The A2A agent is read-only too (ADR 0007): the same stray set stays out.
+A2A_ENV = (
+    "A2A_ADDR", "A2A_AGENT_URL", "LOG_LEVEL", "SERVICE_VERSION", "ENVIRONMENT",
     "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_SERVICE_NAME",
     "DATABASE_URL", "MIGRATIONS_DATABASE_URL",
 )
@@ -250,18 +259,18 @@ def check_refusals(failures: list[str]) -> None:
 
 
 def check_all_components(docs: list[dict], failures: list[str]) -> None:
-    """ADR 0005 (mcp) rendered together with the api."""
+    """ADR 0005 (mcp) and ADR 0007 (a2a) rendered together with the api."""
     services = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "Service"}
     deployments = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "Deployment"}
 
-    want = sorted([RELEASE, f"{RELEASE}-mcp"])
+    want = sorted([RELEASE, f"{RELEASE}-mcp", f"{RELEASE}-a2a"])
     if sorted(deployments) != want:
         failures.append(f"expected the Deployments {want}, got {sorted(deployments)}")
     if sorted(services) != want:
         failures.append(f"expected the Services {want}, got {sorted(services)}")
 
     # Each Service pins its component and selects exactly one Deployment.
-    for name, component in ((RELEASE, "api"), (f"{RELEASE}-mcp", "mcp")):
+    for name, component in ((RELEASE, "api"), (f"{RELEASE}-mcp", "mcp"), (f"{RELEASE}-a2a", "a2a")):
         svc = services.get(name)
         if not pins(svc, component):
             failures.append(f"the {component} Service must exist and pin component={component}")
@@ -282,11 +291,30 @@ def check_all_components(docs: list[dict], failures: list[str]) -> None:
         for want_env in MCP_ENV:
             if want_env not in env:
                 failures.append(f"the MCP Deployment does not render {want_env}")
-    for d in docs:
-        if d.get("kind") == "HTTPRoute" and d["metadata"]["name"].endswith("-mcp"):
-            backends = {b["name"] for r in d["spec"]["rules"] for b in r["backendRefs"]}
-            if backends != {f"{RELEASE}-mcp"}:
-                failures.append(f"the mcp HTTPRoute must route to the mcp Service only, got {sorted(backends)}")
+    check_a2a(deployments.get(f"{RELEASE}-a2a"), failures)
+    for component in ("mcp", "a2a"):
+        for d in docs:
+            if d.get("kind") == "HTTPRoute" and d["metadata"]["name"].endswith(f"-{component}"):
+                backends = {b["name"] for r in d["spec"]["rules"] for b in r["backendRefs"]}
+                if backends != {f"{RELEASE}-{component}"}:
+                    failures.append(f"the {component} HTTPRoute must route to the {component} Service only, got {sorted(backends)}")
+
+
+def check_a2a(a2a: dict | None, failures: list[str]) -> None:
+    """The A2A Deployment: /app/a2a, its own env, never Kafka/relay/sibling env."""
+    if a2a is None:
+        return
+    if command_of(a2a) != ["/app/a2a"]:
+        failures.append("the A2A Deployment must run /app/a2a")
+    env = set(env_names(a2a))
+    stray = MCP_STRAY & env
+    if stray:
+        failures.append(f"the A2A Deployment must not get Kafka/relay/sibling/scheduler env (it is read-only and never dials Kafka): {sorted(stray)}")
+    if "EVENT_PUBLISHER" in env:
+        failures.append("the A2A Deployment must not get EVENT_PUBLISHER (no publisher in a read-only agent)")
+    for want_env in A2A_ENV:
+        if want_env not in env:
+            failures.append(f"the A2A Deployment does not render {want_env}")
 
 
 def main() -> int:
@@ -295,11 +323,14 @@ def main() -> int:
     check_components(render(ENABLE_EVERYTHING), failures)
     check_all_components(render(ENABLE_ALL_COMPONENTS), failures)
 
-    # Default values must not deploy an HPA, a route or the mcp component.
+    # Default values must not deploy an HPA, a route or the mcp/a2a components.
     defaults = render(BASE)
     stray = [d["kind"] for d in defaults if d.get("kind") in {"HorizontalPodAutoscaler", "Ingress", "HTTPRoute"}]
     if stray:
         failures.append(f"optional templates rendered with default values: {stray}")
+    default_deployments = [d["metadata"]["name"] for d in defaults if d.get("kind") == "Deployment"]
+    if default_deployments != [RELEASE]:
+        failures.append(f"only the api Deployment may render with default values (mcp and a2a are off), got {default_deployments}")
     dep = next(d for d in defaults if d.get("kind") == "Deployment")
     names = env_names(dep)
     if DEFAULT_OFF_ENV & set(names):
@@ -317,8 +348,8 @@ def main() -> int:
             print(f"FAIL: {f}")
         return 1
 
-    print("PASS: every Service selects exactly one Deployment (api, mcp); mcp is off by default; "
-          "the MCP Deployment gets no Kafka/relay/sibling/scheduler env; "
+    print("PASS: every Service selects exactly one Deployment (api, mcp, a2a); mcp and a2a are off by default; "
+          "the MCP and A2A Deployments get no Kafka/relay/sibling/scheduler env; "
           "the HPA, Ingress and HTTPRoute are off by default "
           "and route to the api only; every cmd/api env var has a dedicated value; the chart refuses to render without a database "
           "source, brokers or any sibling base URL, with a *_MODE or a consumer group in extraEnv, "

@@ -1,14 +1,14 @@
 # Default values for checkout. One always-on component: the api Deployment
 # (cmd/api: REST, the outbox relay and the five clock-driven saga policies in
-# one process); the read-only MCP server (cmd/mcp, ADR 0005) is a second,
-# optional component. The chart refuses to render without the mandatory values
+# one process); the read-only MCP server (cmd/mcp, ADR 0005) and the read-only
+# A2A agent (cmd/a2a, ADR 0007) are optional extra components. The chart refuses to render without the mandatory values
 # below (named in the failure): database.*, kafka.brokers and the five
 # config.*Url sibling base URLs.
 
 replicaCount: 1
 
 # The image is built from this repository's Dockerfile (ENTRYPOINT ./api,
-# binaries /app/api and /app/mcp, user 1000, root filesystem never written).
+# binaries /app/api, /app/mcp and /app/a2a, user 1000, root filesystem never written).
 image:
   repository: warehouse/checkout
   pullPolicy: IfNotPresent
@@ -232,6 +232,50 @@ mcp:
   route:
     enabled: false
     path: "/api/mcp/checkout"
+    parentRefs:
+      - name: ""
+        namespace: ""
+        sectionName: "http"
+  extraEnv: []
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# The optional A2A agent (ADR 0007): cmd/a2a, a read-only deployable that
+# exposes ONE goal-shaped skill (checkout_session_status) over the SAME
+# GetSession use case the REST and MCP adapters use, as Agent2Agent JSON-RPC
+# (/ and /a2a) on :8093 with the Agent Card at /.well-known/agent-card.json and
+# an open /healthz. Never dials Kafka, runs no relay and no policy, calls no
+# sibling context, and has NO auth (fleet-wide revert 2026-09-11). Needs
+# database.* like the api (the same Secret), nothing else. A2A carries
+# delegation only: facts between contexts stay CloudEvents on Kafka.
+a2a:
+  enabled: false
+  replicaCount: 1
+  httpAddr: ":8093"                  # A2A_ADDR (JSON-RPC at / and /a2a, card, /healthz)
+  # A2A_AGENT_URL is MANDATORY for the binary: the absolute URL advertised on
+  # the Agent Card. Empty = this release's in-cluster Service DNS
+  # (http://<fullname>-a2a.<namespace>.svc.cluster.local:<service.port>/); set
+  # it to advertise a gateway URL instead.
+  agentUrl: ""
+  # SERVICE_VERSION / ENVIRONMENT: the labels cmd/a2a reports on its telemetry.
+  # serviceVersion empty = the image tag (appVersion when empty), like the api.
+  serviceVersion: ""
+  environment: "production"
+  service:
+    type: ClusterIP
+    port: 8093
+    targetPort: 8093
+  # Gateway exposure: /api/a2a/checkout -> Service :8093, prefix rewritten to /
+  # (the JSON-RPC endpoint; the card stays reachable under the same prefix).
+  # Needs the Gateway parentRef from warehouse-infra; NO auth on the route.
+  route:
+    enabled: false
+    path: "/api/a2a/checkout"
     parentRefs:
       - name: ""
         namespace: ""
