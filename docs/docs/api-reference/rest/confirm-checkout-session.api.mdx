@@ -1,0 +1,70 @@
+---
+id: confirm-checkout-session
+title: "Confirm the session with a payment method token"
+description: "ConfirmSession with the PSP payment method token (never a card number). AUTHORIZING calls customer-payments POST /payment-authorizations (key `<sessionId>:auth:<attempt>`, the attempt counter grows on every retry after a decline; allocations per group); the authorized amount must equal the quote total (ErrAuthorizationMismatch). PLACING persists the placement request and calls customer-ordering POST /checkout with Idempotency-Key equal to the sessionId. Outcomes: 200 with the session in a definitive state (COMPLETED, DECLINED, REQUOTE_REQUIRED with requotedOffers after a successful void, or FAILED after a void plus an alert for a contract bug); 202 while the place-order outcome is unknown (the session stays PLACING; poll GET /checkout-sessions/{sessionId}). A DECLINED session may be confirmed again with another token while the price quote is valid."
+sidebar_label: "Confirm the session with a payment method token"
+hide_title: true
+hide_table_of_contents: true
+api: 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
+sidebar_class_name: "post api-method"
+info_path: docs/api-reference/rest/checkout-api
+custom_edit_url: null
+hide_send_button: true
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+import Translate from "@docusaurus/Translate";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Confirm the session with a payment method token"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/checkout-sessions/{sessionId}:confirm"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+ConfirmSession with the PSP payment method token (never a card number). AUTHORIZING calls customer-payments POST /payment-authorizations (key `<sessionId>:auth:<attempt>`, the attempt counter grows on every retry after a decline; allocations per group); the authorized amount must equal the quote total (ErrAuthorizationMismatch). PLACING persists the placement request and calls customer-ordering POST /checkout with Idempotency-Key equal to the sessionId. Outcomes: 200 with the session in a definitive state (COMPLETED, DECLINED, REQUOTE_REQUIRED with requotedOffers after a successful void, or FAILED after a void plus an alert for a contract bug); 202 while the place-order outcome is unknown (the session stays PLACING; poll GET /checkout-sessions/\{sessionId\}). A DECLINED session may be confirmed again with another token while the price quote is valid.
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+>
+  <Translate id="theme.openapi.request.title">Request</Translate>
+</Heading>
+
+<ParamsDetails
+  {...require("./confirm-checkout-session.ParamsDetails.json")}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  {...require("./confirm-checkout-session.RequestSchema.json")}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  {...require("./confirm-checkout-session.StatusCodes.json")}
+>
+  
+</StatusCodes>
+
+
+      

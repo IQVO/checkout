@@ -1,0 +1,70 @@
+---
+id: open-checkout-session
+title: "Open a checkout session for a cart"
+description: "OpenSession. Reads the cart snapshot (shopping-cart GET /carts/{cartId}), checks every selected offer is still QUOTED with margin (delivery-promise GET /delivery-offers/{offerId}), issues the binding PriceQuote (pricing POST /price-quotes) and opens the session. The BFF then shows the review page with the binding total. shipToAddressId references a saved address held by customer-ordering (NG1); the address itself never enters the storefront."
+sidebar_label: "Open a checkout session for a cart"
+hide_title: true
+hide_table_of_contents: true
+api: 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
+sidebar_class_name: "post api-method"
+info_path: docs/api-reference/rest/checkout-api
+custom_edit_url: null
+hide_send_button: true
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+import Translate from "@docusaurus/Translate";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Open a checkout session for a cart"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/checkout-sessions"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+OpenSession. Reads the cart snapshot (shopping-cart GET /carts/\{cartId\}), checks every selected offer is still QUOTED with margin (delivery-promise GET /delivery-offers/\{offerId\}), issues the binding PriceQuote (pricing POST /price-quotes) and opens the session. The BFF then shows the review page with the binding total. shipToAddressId references a saved address held by customer-ordering (NG1); the address itself never enters the storefront.
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+>
+  <Translate id="theme.openapi.request.title">Request</Translate>
+</Heading>
+
+<ParamsDetails
+  {...require("./open-checkout-session.ParamsDetails.json")}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  {...require("./open-checkout-session.RequestSchema.json")}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  {...require("./open-checkout-session.StatusCodes.json")}
+>
+  
+</StatusCodes>
+
+
+      
