@@ -2,19 +2,17 @@
 id: class-diagram
 title: Class Diagram
 sidebar_label: Class Diagram
-description: UML class diagrams of Checkout's domain model, events and policies, and the hexagonal ports-and-adapters layout, as the model designs them, with the as-built Go packages, with the Anti-Corruption Layer as one outbound adapter.
+description: UML class diagrams of Checkout's domain model, its seven events and the application layer, and the hexagonal ports-and-adapters layout with the Anti-Corruption Layer as one outbound adapter.
 ---
 
 # Class Diagram
 
-UML class diagrams of the `internal/domain/**` packages as the model designs them, plus
-the hexagonal ports and adapters. Type names come from the model's code
-identifiers (`checkoutsession.CheckoutSession`, `ports.OrderPlacer`,
-`checkoutsession.CheckoutSession.RecordPlacementInDoubt`, `checkoutsession.RequotedOffer`,
-`checkoutsession.Group.AmountMinor`) and value objects. Fields are unexported in Go
-and shown with `-`; methods are shown with `+`.
-
-**As built** (`IQVO/checkout` develop `ab4f0e9`): the domain packages are `internal/domain/checkoutsession`. Exported types per package: `checkoutsession`: `CheckoutSession`, `CheckoutOpened`, `CheckoutDeclined`, `CheckoutPlacementInDoubt`, `CheckoutCompleted`, `CheckoutRequoteRequired`, `CheckoutFailed`, `CheckoutSessionExpired`, `CartLine`, `CartGroup`, `CartSnapshot`, `OfferStatus`, `QuoteLine`, `QuoteCharge`, `PriceQuote`, `OpenInput`, `Snapshot`, `ID`, `State`, `Tier`, `Line`, `Group`, `RequotedOffer`, `StoredPlacement`, `VoidOwed`. Application packages: `internal/application/exchange`, `internal/application/idempotency`, `internal/application/outbox`, `internal/application/ports`, `internal/application/usecases`, `internal/application/views`; adapters: `internal/adapters/inbound/http`, `internal/adapters/inbound/mcp`, `internal/adapters/inbound/requestlog`, `internal/adapters/inbound/scheduler`, `internal/adapters/outbound/alerts`, `internal/adapters/outbound/clock`, `internal/adapters/outbound/customerordering`, `internal/adapters/outbound/customerpayments`, `internal/adapters/outbound/deliverypromise`, `internal/adapters/outbound/httpx`, `internal/adapters/outbound/ids`, `internal/adapters/outbound/kafka`, `internal/adapters/outbound/memory`, `internal/adapters/outbound/outbox`, `internal/adapters/outbound/postgres`, `internal/adapters/outbound/pricing`, `internal/adapters/outbound/repocontract`, `internal/adapters/outbound/shoppingcart`, `internal/adapters/outbound/telemetry`. Where a type name below differs (the UML keeps the design names), the [Ubiquitous Language](/docs/ddd/ubiquitous-language) page carries the built identifier.
+UML class diagrams of the Go packages on `develop`: the domain package
+`internal/domain/checkoutsession` (with `internal/domain/shared`), the ports of
+`internal/application/ports` and the adapters. Fields are unexported in Go and
+shown with `-`; methods are shown with `+`. The names are the built
+identifiers; the [Ubiquitous Language](/docs/ddd/ubiquitous-language) page maps
+each business term to its identifier.
 
 ## 1. The CheckoutSession aggregate
 
@@ -23,201 +21,269 @@ classDiagram
     direction TB
     class CheckoutSession {
         <<AggregateRoot>>
-        -sessionId string
+        -id ID
+        -state State
         -cartId string
-        -cartVersion int
+        -cartVersion int64
         -shopperId string
         -shipToAddressId string
-        -lines SessionLine[]
-        -groups SessionGroup[]
+        -lines Line[]
+        -groups Group[]
         -priceQuoteId string
         -currency string
         -totalMinor int64
         -quoteExpiresAt time.Time
-        -authorizationId string nullable
-        -placementRequest bytes nullable
-        -orderId string nullable
-        -requotedOffers RequotedOffer[]
-        -failureCode string nullable
-        -status SessionStatus
-        -version int
-        +OpenSession(cart, quote, at)$ CheckoutSession
-        +ConfirmSession(at) error
-        +RecordAuthorization(authorizationId, totalMinor, request) error
-        +RecordDecline(reason, at) error
-        +RecordPlacementInDoubt(at) error
-        +RecordPlaced(orderId, at) error
-        +RecordRequoteRequired(offers, at) error
-        +RecordFailure(code, at) error
-        +ExpireSession(at) error
+        -authorizationId string
+        -orderId string
+        -requoted RequotedOffer[]
+        -failureCode string
+        -declineReason string
+        -authAttempt int
+        -pendingToken string
+        -authorizingSince time.Time
+        -placement StoredPlacement
+        -placementTries int
+        -nextAttemptAt time.Time
+        -alertedAt time.Time
+        -voidOwed VoidOwed
+        -terminalAt time.Time
+        -version int64
+        +Confirm(token, now) error
+        +RecordAuthorization(authorizationId, authorizedMinor, currency, request, now) error
+        +RecordDecline(reason, now) error
+        +RecordPlacementInDoubt(now) error
+        +RecordPlaced(orderId, now) error
+        +RecordRequoteRequired(offers, now) error
+        +RecordFailure(code, now) error
+        +ExpireSession(now) error
+        +VoidCompleted(now) error
+        +MarkInDoubtAlerted(now) error
+        +PurgePlacement(now) error
+        +PullEvents() Event[]
     }
-    class SessionLine {
+    class Line {
         <<ValueObject>>
-        -lineNo int
-        -catalogItemId string
-        -quantity int
+        +LineNo int
+        +CatalogItemID string
+        +Quantity int
     }
-    class SessionGroup {
+    class Group {
         <<ValueObject>>
-        -groupNo int
-        -offerId string
-        -tier Tier
-        -lineNos int[]
-        -amountMinor int64
+        +GroupNo int
+        +OfferID string
+        +Tier Tier
+        +LineNos int[]
+        +AmountMinor int64
     }
     class RequotedOffer {
         <<ValueObject>>
-        -offerId string
-        -groupNo int
-        -tier Tier
-        -deliverByEarliest time.Time
-        -deliverByLatest time.Time
-        -expiresAt time.Time
+        +OfferID string
+        +GroupNo int
+        +Tier Tier
+        +DeliverByEarliest string
+        +DeliverByLatest string
+        +ExpiresAt time.Time
     }
-    CheckoutSession *-- "1..*" SessionLine : lines
-    CheckoutSession *-- "1..*" SessionGroup : groups
-    CheckoutSession *-- "0..*" RequotedOffer : requotedOffers
+    class StoredPlacement {
+        <<ValueObject>>
+        +RequestBody bytes
+        +RequestHash string
+        +PlacingSince time.Time
+    }
+    class VoidOwed {
+        <<ValueObject>>
+        +AuthorizationID string
+    }
+    CheckoutSession *-- "1..100" Line : lines
+    CheckoutSession *-- "1..*" Group : groups
+    CheckoutSession *-- "0..*" RequotedOffer : requoted
+    CheckoutSession *-- "0..1" StoredPlacement : placement
+    CheckoutSession *-- "0..1" VoidOwed : voidOwed
 ```
 
-Derived from: `model.yaml → contexts[checkout].aggregates[CheckoutSession]`
-(`description`, `states`, `transitions`, `value_objects`, `commands`,
-`invariants`); `storefront/apis/checkout/openapi.yaml` for the field names
-the model's description lists in prose (`quoteExpiresAt`, `totalMinor`,
-`amountMinor`).
+Source: `internal/domain/checkoutsession/aggregate.go` (the fields),
+`transitions.go` and `terminals.go` (the commands), `values.go` (the value
+objects), `open.go` (`Open`, the factory function that returns an `OPEN`
+session).
 
-`SessionStatus` is the string enumeration of the eight states `OPEN`,
-`AUTHORIZING`, `DECLINED`, `PLACING`, `REQUOTE_REQUIRED`, `COMPLETED`,
-`EXPIRED` and `FAILED`.
+`State` is the string enumeration of the eight states `OPEN`, `AUTHORIZING`,
+`DECLINED`, `PLACING`, `REQUOTE_REQUIRED`, `COMPLETED`, `EXPIRED` and `FAILED`;
+`Tier` is `SAME_DAY`, `NEXT_DAY`, `TWO_DAY` or `STANDARD`, re-declared locally
+(`session.go`): there is no shared kernel with `delivery-promise`.
+`RequotedOffer` carries its delivery bounds as `YYYY-MM-DD` strings. The
+`pendingToken` is kept only while `AUTHORIZING`. Bounds: at most 100 lines
+(`MaxLines`), quantity 1 to 99 (`MaxQuantity`). The domain errors
+(`ErrCartNotCheckoutReady`, `ErrPriceQuoteExpired`, `ErrSessionClosed`,
+`ErrAuthorizationMismatch`, `ErrPlacementInDoubt`, `ErrOfferNotQuotable`,
+`ErrVoidPending`, `ErrContractViolation`) are variables in `session.go`, listed
+on the [Aggregate Design Canvas](/docs/ddd/aggregate-design-canvas).
 
-Omitted: the `Err...` variables (`ErrCartNotCheckoutReady`,
-`ErrPriceQuoteExpired`, `ErrSessionClosed`, `ErrAuthorizationMismatch`,
-`ErrPlacementInDoubt`; listed on the
-[Aggregate Design Canvas](/docs/ddd/aggregate-design-canvas)).
-`placementRequest` is the stored, PII-free body the model describes but does
-not name as a type (hotspot H9 on
-[EventStorming](/docs/ddd/eventstorming)); it is shown as
-bytes because it is replayed byte for byte. `Tier` (`SAME_DAY`, `NEXT_DAY`, `TWO_DAY`, `STANDARD`) is the network
-`delivery-promise` vocabulary, re-declared locally as a string enumeration: there is no shared kernel.
-The method signatures are the design; the model names the commands, not their
-parameters.
-
-## 2. Events and policies
+## 2. Events
 
 ```mermaid
 classDiagram
     direction TB
+    class Event {
+        <<interface>>
+        +EventName() string
+        +Entity() string
+        +SubjectID() string
+        +AggregateVersion() int64
+        +OccurredAt() time.Time
+    }
     class CheckoutOpened {
         <<DomainEvent>>
-        +sessionId string
-        +cartId string
-        +shopperId string
-        +totalMinor int64
-        +openedAt time.Time
+        +SessionID ID
+        +CartID string
+        +ShopperID string
+        +TotalMinor int64
     }
     class CheckoutDeclined {
         <<DomainEvent>>
-        +sessionId string
-        +reason string
-        +at time.Time
+        +SessionID ID
+        +Reason string
+    }
+    class CheckoutPlacementInDoubt {
+        <<DomainEvent>>
+        +SessionID ID
+        +PlacingSince time.Time
+    }
+    class CheckoutSessionExpired {
+        <<DomainEvent>>
+        +SessionID ID
     }
     class CheckoutFailed {
         <<DomainEvent>>
-        +sessionId string
-        +code string
-        +at time.Time
+        +SessionID ID
+        +Code string
     }
+    Event <|.. CheckoutOpened
+    Event <|.. CheckoutDeclined
+    Event <|.. CheckoutPlacementInDoubt
+    Event <|.. CheckoutSessionExpired
+    Event <|.. CheckoutFailed
 ```
+
+Source: `internal/domain/checkoutsession/events.go` (`CheckoutOpened`,
+`CheckoutDeclined`, `CheckoutPlacementInDoubt`, `CheckoutSessionExpired`,
+`CheckoutFailed`), `internal/domain/shared/shared.go` (`Event`).
 
 ```mermaid
 classDiagram
     direction TB
+    class Event {
+        <<interface>>
+    }
     class CheckoutCompleted {
         <<DomainEvent>>
-        +sessionId string
-        +orderId string
-        +shopperId string
-        +cartId string
-        +authorizationId string
-        +currency string
-        +totalMinor int64
-        +groups GroupAmount[]
-        +completedAt time.Time
-    }
-    class GroupAmount {
-        <<ValueObject>>
-        +groupNo int
-        +tier Tier
-        +amountMinor int64
+        +SessionID ID
+        +OrderID string
+        +ShopperID string
+        +CartID string
+        +AuthorizationID string
+        +Currency string
+        +TotalMinor int64
+        +Groups Group[]
     }
     class CheckoutRequoteRequired {
         <<DomainEvent>>
-        +sessionId string
-        +requotedOffers RequotedOffer[]
-        +at time.Time
+        +SessionID ID
+        +RequotedOffers RequotedOffer[]
     }
-    CheckoutCompleted *-- "1..*" GroupAmount : groups
+    class Header {
+        <<shared>>
+        +Version int64
+        +At time.Time
+    }
+    Event <|.. CheckoutCompleted
+    Event <|.. CheckoutRequoteRequired
+    CheckoutCompleted *-- Header
+    CheckoutRequoteRequired *-- Header
 ```
+
+Source: `internal/domain/checkoutsession/events.go`,
+`internal/domain/shared/shared.go` (`Event`, `Header`). Every event embeds
+`shared.Header` (the aggregate version and the instant). The wire payloads
+(`internal/adapters/outbound/kafka/payloads.go`) are camelCase and are
+described on [Domain Events](/docs/ddd/domain-events).
+
+## 3. Application layer: use cases and ports
 
 ```mermaid
 classDiagram
-    direction TB
-    class ResolveInDoubtPlacements {
-        <<Policy>>
-        re-send the stored body with the
-        same Idempotency-Key with backoff
-        until a definitive answer, alert at 20 h
+    direction LR
+    class Deps {
+        <<struct>>
+        +Sessions SessionRepository
+        +Carts CartReader
+        +Offers OfferReader
+        +Quoter PriceQuoter
+        +Payments PaymentGateway
+        +Placer OrderPlacer
+        +Outbox EventOutbox
+        +UoW UnitOfWork
+        +Clock Clock
+        +IDs IDGenerator
+        +Alerter Alerter
+        +Metrics SessionMetrics
     }
-    class ExpireOnQuoteExpiry {
-        <<Policy>>
-        an OPEN or DECLINED session
-        expires with its price quote
-    }
-    class CheckoutCompleted {
-        <<DomainEvent>>
-    }
-    class CheckoutRequoteRequired {
-        <<DomainEvent>>
-    }
-    class CheckoutFailed {
-        <<DomainEvent>>
-    }
-    ResolveInDoubtPlacements ..> CheckoutCompleted : may lead to
-    ResolveInDoubtPlacements ..> CheckoutRequoteRequired : may lead to
-    ResolveInDoubtPlacements ..> CheckoutFailed : may lead to
+    class OpenSession
+    class ConfirmSession
+    class GetSession
+    class ResolveInDoubtPlacements
+    class ResolveStuckAuthorizations
+    class RetryOwedVoids
+    class ExpireOnQuoteExpiry
+    class PurgeStoredPlacements
+    Deps <|-- OpenSession
+    Deps <|-- ConfirmSession
+    Deps <|-- GetSession
+    Deps <|-- ResolveInDoubtPlacements
+    Deps <|-- ResolveStuckAuthorizations
+    Deps <|-- RetryOwedVoids
+    Deps <|-- ExpireOnQuoteExpiry
+    Deps <|-- PurgeStoredPlacements
 ```
 
-Derived from: `model.yaml → contexts[checkout].publishes`, `.policies`.
+Source: `internal/application/usecases/deps.go` (the `Deps` bundle each use case
+embeds), `open_session.go`, `confirm_session.go`, `queries.go`, `policies.go`,
+`resolve_in_doubt.go`. `internal/application/ports` declares the interfaces
+only (a fitness test enforces it): `SessionRepository`, `EventOutbox`,
+`UnitOfWork`, `IdempotencyStore`, `Clock`, `IDGenerator`, `Alerter`,
+`SessionMetrics` in `ports.go`; `CartReader`, `OfferReader`, `PriceQuoter`,
+`PaymentGateway` and `OrderPlacer` (the Anti-Corruption Layer port) in
+`gateways.go`.
 
-Omitted: the CloudEvents envelope (built in the Kafka adapter).
-`ExpireOnQuoteExpiry` leads to `ExpireSession`, which raises no event
-(hotspot H7), so it has no arrow here. `GroupAmount` is the
-`groups(groupNo, tier, amountMinor)` entry of `CheckoutCompleted`.
-
-## 3. Hexagonal ports and adapters
+## 4. Hexagonal ports and adapters
 
 ```mermaid
 flowchart TB
     subgraph IN["internal/adapters/inbound"]
-        HTTP["http<br/>BFF writes and polling reads"]
-        SCH["scheduler<br/>ExpireSession,<br/>ResolveInDoubtPlacements"]
+        HTTP["http<br/>3 session routes, healthz, readyz"]
+        MCP["mcp<br/>get_checkout_session"]
+        A2A["a2a<br/>checkout_session_status"]
+        SCH["scheduler<br/>5 policy sweeps"]
     end
-    APP["<b>internal/application/usecases</b><br/>OpenSession, ConfirmSession<br/>RecordAuthorization, RecordDecline<br/>RecordPlacementInDoubt, RecordPlaced<br/>RecordRequoteRequired, RecordFailure<br/>ExpireSession<br/>ResolveInDoubtPlacements"]
-    DOM["<b>internal/domain</b><br/>checkoutsession.CheckoutSession<br/>checkoutsession.SessionLine, checkoutsession.SessionGroup<br/>checkoutsession.RequotedOffer"]
-    PORTS["<b>internal/application/ports</b><br/>SessionRepository<br/>CartReader, OfferChecker, QuoteIssuer<br/>PaymentAuthorizer, OrderPlacer<br/>Outbox, IdempotencyStore<br/>UnitOfWork, Clock"]
+    APP["<b>internal/application/usecases</b><br/>OpenSession, ConfirmSession, GetSession<br/>ResolveInDoubtPlacements<br/>ResolveStuckAuthorizations<br/>RetryOwedVoids, ExpireOnQuoteExpiry<br/>PurgeStoredPlacements"]
+    DOM["<b>internal/domain</b><br/>checkoutsession.CheckoutSession<br/>Line, Group, RequotedOffer<br/>StoredPlacement, VoidOwed<br/>shared"]
+    PORTS["<b>internal/application/ports</b><br/>SessionRepository, EventOutbox<br/>UnitOfWork, IdempotencyStore<br/>CartReader, OfferReader, PriceQuoter<br/>PaymentGateway, OrderPlacer<br/>Clock, IDGenerator, Alerter<br/>SessionMetrics"]
     subgraph OUT["internal/adapters/outbound"]
         A1["postgres<br/>repository, outbox,<br/>idempotency store, UoW"]
-        A2["kafka<br/>outbox relay"]
-        A3["shoppingcart, deliverypromise,<br/>pricing, customerpayments<br/>REST clients"]
+        A2["outbox + kafka<br/>relay and sink"]
+        A3["shoppingcart, deliverypromise,<br/>pricing, customerpayments<br/>REST clients over httpx"]
         A4["customerordering<br/>the Anti-Corruption Layer<br/>POST /checkout"]
+        A5["alerts, clock, ids, telemetry"]
     end
     HTTP --> APP
+    MCP --> APP
+    A2A --> APP
     SCH --> APP
-    HTTP -. reads .-> PORTS
     APP --> DOM
     APP --> PORTS
     PORTS --- A1
     PORTS --- A3
     PORTS --- A4
+    PORTS --- A5
     A1 -. outbox rows .-> A2
 
     classDef outblue fill:#e7f5ff,stroke:#1c7ed6,color:#000
@@ -226,19 +292,17 @@ flowchart TB
     class A4 acl
 ```
 
-Derived from: `model.yaml → contexts[checkout].aggregates`, `.inbound`,
-`.sync_calls`, `.policies`; `conventions.integration_rules` (outbox,
-Idempotency-Key); the fleet's Go hexagonal layout. `consumes` is empty, so
-there is **no inbound Kafka consumer** and no inbox. `sync_calls` holds six
-rows, so there are **five outbound REST clients**: four plain clients and
-the `customerordering` adapter, which the model names as the Anti-Corruption
-Layer (`internal/adapters/outbound/customerordering`) and the only place that
-knows the network's wire names.
+Source: `cmd/api/adapters.go` (the wiring of the five gateways and the
+Postgres adapters), `cmd/api/workers.go` (the relay and the five schedulers),
+`cmd/mcp/main.go`, `cmd/a2a/main.go`, `internal/architecture/architecture_test.go`
+(`TestHexagonalArchitecture`).
 
-Omitted: the composition root (`cmd/checkout`), metrics and tracing. The
-port names (`CartReader`, `OfferChecker`, `QuoteIssuer`, `PaymentAuthorizer`,
-`OrderPlacer`) and the four plain adapter packages follow the fleet
-convention and are not named in the model; only `customerordering` is. The
-scheduler is an inbound adapter: time triggers `ExpireSession` and
-`ResolveInDoubtPlacements`. The read route (`GetSession`) reads the repository
-through its port without a use case.
+There is **no inbound Kafka consumer** and no inbox: the service consumes no
+topic. There are **five outbound REST clients**: four plain clients and the
+`customerordering` adapter, the Anti-Corruption Layer and the only place that
+knows the network's wire names. `GetSession` is a real use case: the REST,
+MCP and A2A adapters all call it. `cmd/mcp` and `cmd/a2a` wire only the read
+repository. The `memory` and `repocontract` packages under
+`internal/adapters/outbound` are test fixtures and a contract suite; the
+runtime binaries must not import them
+(`TestRuntimeBinaryHasNoInMemoryAdapters`).

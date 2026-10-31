@@ -2,31 +2,33 @@
 id: domain-events
 title: Domain Events
 sidebar_label: Domain Events
-description: Every CloudEvents type Checkout publishes, with topics, keys, payload fields, consumers, idempotency and one complete example envelope; the model lists no consumed event.
+description: Every CloudEvents type Checkout publishes, with topics, keys, payload fields, consumers, idempotency and one complete example envelope; Checkout consumes no event.
 ---
 
 # Domain Events
 
-Every event this context publishes, from `contexts[checkout].publishes`, with
-the consuming contexts' entries for the one integration event. The model
-lists **no consumed event** (`consumes: []`). The domain-wide rules are on
+Every event this context publishes, with the consuming contexts for the one
+integration event. Checkout consumes **no event**. The catalogue is pinned by
+`apis/asyncapi.yaml` and checked by `TestEventCatalogueMatchesContract`; the
+short form is on the [event catalogue](/docs/api-reference/events). The
+domain-wide rules are on
 [Event standard: CloudEvents](https://iqvo.github.io/warehouse-docs/storefront/strategic-design/event-standard-cloudevents).
 
 ## Envelope
 
 Every Kafka message is a **CloudEvents 1.0 event in structured JSON mode**
-(`conventions.cloudevents`):
+(`internal/adapters/kafka/cloudevents/cloudevents.go`):
 
 | Attribute | Value for this context |
 | --- | --- |
 | `specversion` | `1.0` |
 | `id` | a UUID minted once when the event is written to the outbox; a redelivery carries the same `id` |
 | `source` | `/retailnetwork/checkout` |
-| `type` | `com.retailnetwork.storefront.checkout.checkoutsession.<EventName>` (tier `storefront`, entity `checkoutsession` from the `publishes` rows) |
+| `type` | `com.retailnetwork.storefront.checkout.checkoutsession.<EventName>` (tier `storefront`, entity `checkoutsession`) |
 | `subject` | the aggregate root id (`sessionId`) |
 | `time` | the instant the fact happened, UTC |
 | `datacontenttype` | `application/json` |
-| `dataschema` | `urn:retailnetwork:checkout:events:CheckoutCompleted:v1` for the integration event; **as built** the six analytics-only events carry `urn:retailnetwork:checkout:analytics:<EventName>:v1` (service ADR 0004, encoder goldens) |
+| `dataschema` | `urn:retailnetwork:checkout:events:CheckoutCompleted:v1` for the integration event; the six analytics-only events carry `urn:retailnetwork:checkout:analytics:<EventName>:v1` ([ADR 0004](/docs/adr/0004-cloudevents-envelope-and-type-catalogue), encoder goldens) |
 | Kafka topic | `retailnetwork.checkout.events` for `CheckoutCompleted`; `retailnetwork.checkout.analytics` for the six analytics-only events |
 | Kafka key | `sessionId`, so one session's events stay on one partition and in order |
 
@@ -87,13 +89,13 @@ integration event; the other six name their consumers as "analytics only"
 | Topic | `retailnetwork.checkout.analytics` |
 | Subject / key | `sessionId` |
 | Dataschema | `urn:retailnetwork:checkout:analytics:CheckoutDeclined:v1` |
-| Producing command / use case | `RecordDecline` (`customer-payments` declined the authorization) |
+| Producing command / use case | `RecordDecline` (customer-payments declined the authorization), or `RecordAuthorization` when the authorized amount or currency is not the quote's (reason `authorization-mismatch`) |
 | Consumers | analytics only |
 
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `sessionId` | string | The session whose authorization was declined. |
-| `reason` | string | The decline reason. |
+| `reason` | string | The decline reason: `payment-<state>` (for example `payment-declined`) when customer-payments answers 201 in a state other than `AUTHORIZED`, `authorization-rejected: <slug>` on a 422, `declined` when none was given, or `authorization-mismatch`. |
 | `at` | timestamp | When the decline was recorded. |
 
 ### CheckoutRequoteRequired
@@ -121,13 +123,13 @@ integration event; the other six name their consumers as "analytics only"
 | Topic | `retailnetwork.checkout.analytics` |
 | Subject / key | `sessionId` |
 | Dataschema | `urn:retailnetwork:checkout:analytics:CheckoutFailed:v1` |
-| Producing command / use case | `RecordFailure` (a `422` from the network: a contract bug; the authorization is voided and an alert is raised) |
+| Producing command / use case | `RecordFailure`: a `400` or `422` from the network, a contract bug (code `place-order-rejected`), or the 22 h give-up of an in-doubt placement (code `placement-unresolved`). The authorization is voided and an alert is raised. |
 | Consumers | analytics only |
 
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `sessionId` | string | The session that failed. |
-| `code` | string | The failure code stored on the session. |
+| `code` | string | The failure code stored on the session: `place-order-rejected` or `placement-unresolved`. |
 | `at` | timestamp | When the failure was recorded. |
 
 ### CheckoutSessionExpired
@@ -146,7 +148,7 @@ integration event; the other six name their consumers as "analytics only"
 | `sessionId` | string | The session that expired. |
 | `at` | timestamp | When the expiry was recorded. |
 
-**As built** the payload is `{sessionId, at}` only (checkout ADR 0004 type catalogue, `CheckoutSessionExpired.golden.json`); the design's `cartId` and `quoteExpiresAt` were dropped and the model now says the same.
+The payload is `{sessionId, at}` only (`internal/adapters/outbound/kafka/testdata/CheckoutSessionExpired.golden.json`).
 
 ### CheckoutPlacementInDoubt
 
@@ -171,14 +173,16 @@ facts, published analytics-only.
 
 ## Consumed
 
-None. The model lists no consumed event for this context. The session
-reacts to the synchronous answer of each call it makes. The design names the consumer
-groups of the two consumers of `CheckoutCompleted`
-`shopping-cart.checkout` and `customer-payments.checkout` (as built each name comes from
-the consumer's `CHECKOUT_CONSUMER_GROUP`); both are
-idempotent on the CloudEvents `id` and dispatch on the full type string.
+None. Checkout has no consumer, no consumer group, no DLQ and no inbox: the
+session reacts to the synchronous answer of each call it makes. The two
+consumers of `CheckoutCompleted` are other services; the group names they use
+are theirs (in warehouse-infra they are `shopping-cart-checkout` and
+`customer-payments-checkout`) and are not set by this repository.
 
 ### What the consumers do with `CheckoutCompleted`
+
+This is the consumers' behaviour as their own contracts describe it; it is not
+built in this repository.
 
 | Consumer | Fields used | What it does |
 | --- | --- | --- |
@@ -192,41 +196,45 @@ before this event does; that consumer parks them until the bind (gap S4 on
 the [Model Gap Register](https://iqvo.github.io/warehouse-docs/storefront/strategic-design/model-gap-register)).
 A session publishes `CheckoutCompleted` at most once, because `COMPLETED`
 has no transition out (`ErrSessionClosed`); a redelivery carries the same
-`id` and is acknowledged without effect.
+`id`, so consumers de-duplicate on it.
 
 ## Example envelope
 
-`CheckoutCompleted`, the one fact the cart and payments follow (all ids
-synthetic):
+`CheckoutCompleted`, the one fact the cart and payments follow. This is the
+golden file the encoder test pins (shown re-indented):
 
 ```json
 {
   "specversion": "1.0",
-  "id": "b7d40f12-35ae-4c9b-8e61-0d2f9a47c3e8",
+  "id": "3f6c2a9e-8b1d-4c7a-9e55-0d2f6b7a1c40",
   "source": "/retailnetwork/checkout",
   "type": "com.retailnetwork.storefront.checkout.checkoutsession.CheckoutCompleted",
-  "subject": "ses-9c21d4",
-  "time": "2026-10-24T09:31:07Z",
+  "subject": "sess-1",
   "datacontenttype": "application/json",
   "dataschema": "urn:retailnetwork:checkout:events:CheckoutCompleted:v1",
+  "time": "2026-10-23T10:15:30.123456Z",
   "data": {
-    "sessionId": "ses-9c21d4",
-    "orderId": "ord-71ab05",
-    "shopperId": "shp-30e8",
-    "cartId": "cart-4f8b1c",
-    "authorizationId": "auth-5d17f2",
-    "currency": "BRL",
-    "totalMinor": 24890,
+    "sessionId": "sess-1",
+    "orderId": "order-1",
+    "shopperId": "shopper-1",
+    "cartId": "cart-1",
+    "authorizationId": "auth-1",
+    "currency": "USD",
+    "totalMinor": 2100,
     "groups": [
-      {"groupNo": 1, "tier": "NEXT_DAY", "amountMinor": 15990},
-      {"groupNo": 2, "tier": "STANDARD", "amountMinor": 8900}
+      {"groupNo": 1, "tier": "NEXT_DAY", "amountMinor": 1365},
+      {"groupNo": 2, "tier": "STANDARD", "amountMinor": 735}
     ],
-    "completedAt": "2026-10-24T09:31:07Z"
+    "completedAt": "2026-10-23T10:15:30.123456Z"
   }
 }
 ```
 
+Source: `internal/adapters/outbound/kafka/testdata/CheckoutCompleted.golden.json`
+(re-indented here), `internal/adapters/outbound/kafka/payloads.go`.
+
 The event carries references only: `shopperId`, `orderId` and
 `authorizationId`. No address, name, e-mail or card data appears in any
-checkout event (`conventions.no_auth`, `meta.hard_boundary`); the stored
-placement request that holds `shipToAddressId` never leaves the aggregate.
+checkout event; the stored placement request that holds `shipToAddressId` never
+leaves the aggregate. The Kafka message also carries the `content-type` header
+and, when the request had a span, `traceparent` and `tracestate`.

@@ -52,8 +52,7 @@ and pricing already carry what it needs), `offer-availability`,
 `order-sourcing` and `shipping-and-tracking` (network; their fulfilment facts
 reach the storefront through `customer-payments`, never through checkout),
 and the payment provider itself, which only `customer-payments` talks to
-through its provider port. Checkout never touches a `warehouse.*` topic
-(a hard boundary of the design).
+through its provider port. Checkout never touches a `warehouse.*` topic.
 
 ## Relationships
 
@@ -81,7 +80,7 @@ through its provider port. Checkout never touches a `warehouse.*` topic
   are checkout asking; nobody calls checkout except the BFF, which is the point
   of a saga orchestrator.
 - **No Shared Kernel.** The service-tier enum and the offer shape are
-  re-declared inside `SessionGroup` and `RequotedOffer`; `offerId`,
+  re-declared inside `Group` and `RequotedOffer` (`internal/domain/checkoutsession/values.go`); `offerId`,
   `priceQuoteId` and `authorizationId` are values copied from messages.
 - **Checkout consumes nothing.** There is no consumer: the session learns every
   outcome from the synchronous answer of the call it just made, and `Idempotency-Key`

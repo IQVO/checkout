@@ -25,7 +25,7 @@ spec lists the three session routes and not the two probes. See the
 | REST | `apis/openapi.yaml` | The pages under *REST* are generated from the spec with `npm run gen-api-docs`; do not edit them by hand. Server named in the spec: `http://localhost:8080`; through the cluster gateway the route is `/api/checkout` with the prefix stripped (Kong `:8000` on the local cluster). |
 | Events | `apis/asyncapi.yaml` | Seven published events on two topics, none consumed. Summarised on the [event catalogue](/docs/api-reference/events); every field on [Domain events](/docs/ddd/domain-events). |
 | MCP | [ADR 0005](/docs/adr/0005-mcp-server), `internal/adapters/inbound/mcp` | `cmd/mcp` serves Streamable HTTP on `/mcp` and `/` (port 8090; through Kong `/api/mcp/checkout`, rewritten to `/mcp`). One read-only tool, `get_checkout_session`; no write tool. No auth, by fleet decision. See [MCP tools](/docs/mcp/tools). |
-| A2A | [ADR 0007](/docs/adr/0007-a2a-inbound-adapter), `internal/adapters/inbound/a2a` | `cmd/a2a` serves JSON-RPC 2.0 on `/` and `/a2a` (port 8093; through Kong `/api/a2a/checkout`, rewritten to `/`), the Agent Card at `/.well-known/agent-card.json` and `GET /healthz`. One read-only skill, `checkout_session_status` (`sessionId`), no write skill. A rejection is answered in the message envelope as a problem (400, 404 or 500), never as a JSON-RPC error. No auth, by fleet decision. |
+| A2A | [ADR 0007](/docs/adr/0007-a2a-inbound-adapter), `internal/adapters/inbound/a2a` | `cmd/a2a` serves JSON-RPC 2.0 on `/` and `/a2a` (port 8093; through Kong `/api/a2a/checkout`, rewritten to `/`), the Agent Card at `/.well-known/agent-card.json` and `GET /healthz`. One read-only skill, `checkout_session_status` (`sessionId`), no write skill. A rejection is answered in the message envelope as a problem, never as a JSON-RPC error: `malformed-skill-request`, `unknown-skill` and `invalid-argument` (400), `not-found` (404) or `internal-error` (500). No auth, by fleet decision. |
 
 ## Endpoints
 
@@ -58,7 +58,8 @@ spec lists the three session routes and not the two probes. See the
   `type = /problems/<slug>` (a relative URI), `title`, `status`, `detail` and
   `instance` (the request path). The slugs the code can answer:
   `malformed-request` (400), `idempotency-key-required` (400), `not-found`
-  (404), `cart-not-checkout-ready`, `session-closed`, `authorization-mismatch`,
+  (404), `resource-not-found` (404, a NUL character in the path),
+  `cart-not-checkout-ready`, `session-closed`, `authorization-mismatch`,
   `placement-in-doubt`, `void-pending`, `illegal-transition`,
   `concurrent-update` (all 409), `idempotency-key-reused`, `validation-failed`,
   `price-quote-expired`, `offer-not-quotable`, `price-quote-rejected` (all 422),

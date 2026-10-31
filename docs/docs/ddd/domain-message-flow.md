@@ -9,7 +9,7 @@ description: Five Checkout scenarios as ddd-crew domain message flows, covering 
 
 Following ddd-crew [Domain Message Flow Modelling](https://github.com/ddd-crew/domain-message-flow-modelling).
 Five scenarios. Participants are contexts and actors. Every arrow is a
-message from the model, prefixed `cmd:` (command), `qry:` (query) or `evt:`
+message of the code (a route, a gateway call or an event), prefixed `cmd:` (command), `qry:` (query) or `evt:`
 (event). A `Note` names a command the session runs on itself. Kafka is drawn
 as one participant. Event names are written `entity.EventName`; the full
 type is `com.retailnetwork.<tier>.<producer>.<entity>.<EventName>` (see
@@ -42,19 +42,18 @@ sequenceDiagram
     CK-->>BFF: cmd: reply 201 OPEN<br/>with the binding total
 ```
 
-Derived from: `model.yaml → contexts[checkout].inbound` (BFF rows),
-`.aggregates[CheckoutSession].commands` + `.invariants`, `.sync_calls`
-(`GetCart`, `GetDeliveryOffer`, `IssuePriceQuote`),
-`.publishes[CheckoutOpened]`; `contexts[pricing].inbound`;
-`network/model/model.yaml → contexts[delivery-promise].inbound` (caller
-`shopper / storefront`, `GetDeliveryOffer`).
+Source: `internal/adapters/inbound/http/handlers.go` (`handleOpen`),
+`internal/application/usecases/open_session.go`,
+`internal/domain/checkoutsession/open.go` (`CheckoutOpened`) and the three
+gateways `shoppingcart`, `deliverypromise` and `pricing` under
+`internal/adapters/outbound`.
 
 Omitted: the outbox write and relay (see
 [Sequence Diagrams](/docs/ddd/sequence-diagrams)); the
 `503` the REST contract names when one of the three dependencies is
 unreachable (the shopper retries with the same `Idempotency-Key`); what
-happens when an offer is no longer `QUOTED` at this pre-check, which the
-model does not define (hotspot H3 on
+happens when an offer is no longer `QUOTED` at this pre-check: `ErrOfferNotQuotable`,
+`422 offer-not-quotable`, no session is created (hotspot H3 on
 [EventStorming](/docs/ddd/eventstorming)).
 
 ## 2. Confirm: authorize, place the order, complete
@@ -71,7 +70,7 @@ sequenceDiagram
     participant SC as shopping-cart
     BFF->>CK: cmd: ConfirmSession<br/>POST :confirm, token
     Note over CK: ErrPriceQuoteExpired<br/>OPEN to AUTHORIZING
-    CK->>CP: cmd: AuthorizePayment<br/>key sessionId:auth,<br/>allocations per group
+    CK->>CP: cmd: AuthorizePayment<br/>key sessionId:auth:attempt,<br/>allocations per group
     CP-->>CK: cmd: reply authorizationId, total
     Note over CK: RecordAuthorization<br/>ErrAuthorizationMismatch<br/>AUTHORIZING to PLACING,<br/>placement request stored
     CK->>CO: cmd: PlaceOrder via ACL<br/>POST /checkout<br/>key sessionId
@@ -83,13 +82,13 @@ sequenceDiagram
     K->>CP: evt: CheckoutCompleted<br/>order bound
 ```
 
-Derived from: `model.yaml → contexts[checkout].aggregates[CheckoutSession]`
-(`transitions`, `invariants`, `commands`), `.sync_calls` (`AuthorizePayment`,
-`PlaceOrder`), `.publishes[CheckoutCompleted]`;
-`contexts[customer-payments].policies[BindOrderOnCheckoutCompleted]` and
-`contexts[shopping-cart].policies[CloseOnCheckoutCompleted]`;
-`network/model/model.yaml → contexts[customer-ordering].inbound`
-(`PlaceOrder`).
+Source: `internal/application/usecases/confirm_session.go`,
+`internal/domain/checkoutsession/transitions.go` and `terminals.go`,
+`internal/adapters/outbound/customerpayments/gateway.go` and
+`customerordering/gateway.go`, `internal/adapters/outbound/kafka/encoder.go`.
+The two consumers (shopping-cart and customer-payments) are other services;
+their reactions are described from their published contracts, not from this
+repository.
 
 The two consumers react independently; neither blocks the answer to the
 shopper. Omitted: the transactional outbox, the replies' status codes on the
@@ -121,17 +120,16 @@ sequenceDiagram
     Note over CK: RecordAuthorization<br/>AUTHORIZING to PLACING,<br/>then scenario 2 from the place-order step
 ```
 
-Derived from: `model.yaml → contexts[checkout].business_decisions` (a
-decline keeps the session open), `.aggregates[CheckoutSession].transitions`
-(`RecordDecline`, `DECLINED → AUTHORIZING`), `.publishes[CheckoutDeclined]`;
-`contexts[customer-payments].publishes[PaymentDeclined]`.
+Source: `internal/domain/checkoutsession/transitions.go` (`RecordDecline`,
+`Confirm` from `DECLINED`), `internal/adapters/outbound/customerpayments/gateway.go`
+(`Authorize`: a 201 in any state but `AUTHORIZED`, or a 422, is a decline).
 
 A decline voids nothing, because no authorization exists. The quote is the
 clock: the session stays open for as long as the binding price quote is valid,
-and `ExpireOnQuoteExpiry` is meant to end it afterwards. Omitted: whether the second `AuthorizePayment` can reuse the key
-`sessionId:auth`, which would replay the first, declined answer; the model does
-not say (hotspot H2), and the missing `DECLINED → EXPIRED` transition
-(hotspot H1).
+and `ExpireOnQuoteExpiry` ends it afterwards (`DECLINED → EXPIRED`, hotspot H1).
+The second `AuthorizePayment` uses a new key, `sessionId:auth:attempt` with the
+attempt counter raised by one, so it cannot replay the first, declined answer
+(hotspot H2).
 
 ## 4. A late requote, or a contract failure
 
@@ -148,39 +146,36 @@ sequenceDiagram
     CK->>CO: cmd: PlaceOrder via ACL<br/>POST /checkout
     alt definitive 409, offer no longer quotable
         CO-->>CK: cmd: reply 409 with requoted offers
-        Note over CK: the ACL maps it to a requote<br/>a definitive rejection allows a void
+        Note over CK: the ACL maps it to a requote<br/>RecordRequoteRequired<br/>PLACING to REQUOTE_REQUIRED<br/>void owed
+        CK->>K: evt: checkoutsession.CheckoutRequoteRequired
         CK->>CP: cmd: VoidAuthorization<br/>POST :void<br/>key sessionId:void
         CP-->>CK: cmd: reply voided
-        Note over CK: RecordRequoteRequired<br/>PLACING to REQUOTE_REQUIRED
-        CK->>K: evt: checkoutsession.CheckoutRequoteRequired
         CK-->>BFF: cmd: reply 200 REQUOTE_REQUIRED<br/>with requotedOffers
-    else definitive 422, a contract bug
-        CO-->>CK: cmd: reply 422
+    else 400 or 422, a contract bug
+        CO-->>CK: cmd: reply 400 or 422
+        Note over CK: RecordFailure and an alert<br/>PLACING to FAILED<br/>void owed
+        CK->>K: evt: checkoutsession.CheckoutFailed
         CK->>CP: cmd: VoidAuthorization<br/>key sessionId:void
         CP-->>CK: cmd: reply voided
-        Note over CK: RecordFailure and an alert<br/>PLACING to FAILED
-        CK->>K: evt: checkoutsession.CheckoutFailed
         CK-->>BFF: cmd: reply 200 FAILED
     end
 ```
 
-Derived from: `model.yaml → contexts[checkout].business_decisions` (a
-definitive 409 voids and asks for a requote, a 422 is a contract bug),
-`.aggregates[CheckoutSession].transitions` (`RecordRequoteRequired`,
-`RecordFailure`), `.sync_calls` (`VoidAuthorization`: "only after a definitive
-rejection"), `.publishes[CheckoutRequoteRequired, CheckoutFailed]`, and the
-`Requote` term; `contexts[customer-payments].inbound` (`VoidAuthorization`).
+Source: `internal/adapters/outbound/customerordering/gateway.go` (`Place`:
+which statuses are definitive), `internal/application/usecases/settle.go`
+(`settlePlacement`, `settleVoid`), `internal/domain/checkoutsession/terminals.go`
+(`RecordRequoteRequired`, `RecordFailure`).
 
-The void is why `REQUOTE_REQUIRED` and `FAILED` can be recorded: both follow a
-successful void (REST contract description). What the session does when the
-void itself fails is not in the model (hotspot H5). The shopper starts the
+The decision is recorded first, with the void owed in the same save; the void is
+then attempted at once. When the void itself fails, the debt stays on the
+session and `RetryOwedVoids` retries it every minute (hotspot H5). The shopper starts the
 next attempt from the cart, with a new session. The REST contract says the BFF
 writes the requoted offers into the cart as a new quote; the cart's
 `AcceptRequotedOffers` (`POST /carts/{cartId}/delivery/requoted`, hotspot H10)
-takes them, though `storefront-bff` has no route for it yet. Omitted:
-the network's wire shapes (`offer-not-quotable`, `requotedOffers`), which are
-the ACL's concern; they are in the network model and customer-ordering's
-contract on develop (hotspot H8, resolved).
+takes them, though `storefront-bff` has no route for it yet (both outside this
+repository, not verified here). Omitted: the network's wire shapes
+(`offer-not-quotable`, `requotedOffers`), which are the ACL's concern
+(`internal/adapters/outbound/customerordering`, hotspot H8).
 
 ## 5. An in-doubt placement, resolved by replay
 
@@ -199,7 +194,7 @@ sequenceDiagram
     CK-->>BFF: cmd: reply 202 PLACING
     BFF->>CK: qry: GetSession<br/>GET /checkout-sessions/sessionId
     CK-->>BFF: qry: reply 200 PLACING
-    Note over CK: ResolveInDoubtPlacements<br/>backoff, alert at 20 h
+    Note over CK: ResolveInDoubtPlacements<br/>backoff from 30 s, alert at 20 h
     CK->>CO: cmd: PlaceOrder replay<br/>stored body, same key sessionId
     CO-->>CK: cmd: reply the first response, orderId
     Note over CK: RecordPlaced<br/>PLACING to COMPLETED
@@ -208,18 +203,18 @@ sequenceDiagram
     CK-->>BFF: qry: reply 200 COMPLETED
 ```
 
-Derived from: `model.yaml → contexts[checkout].business_decisions` (a 503 or
-timeout leaves the session `PLACING`, answers 202, and the resolver replays),
-`.policies[ResolveInDoubtPlacements]`,
-`.aggregates[CheckoutSession].invariants` (`ErrPlacementInDoubt`),
-`.inbound` (`GetSession`), `.rest`.
+Source: `internal/application/usecases/resolve_in_doubt.go`,
+`settle.go`, `internal/domain/checkoutsession/transitions.go`
+(`RecordPlacementInDoubt`), `internal/adapters/inbound/http/handlers.go`
+(`handleConfirm` answers 202 while `Unsettled`).
 
 The replay is safe because the stored request is PII-free and byte for byte
-the same, and `customer-ordering` replays its first response to a repeated
+the same, and `customer-ordering` is expected to replay its first response to a repeated
 `Idempotency-Key`. A replay can end any of the three definitive ways: the
-diagram shows the success; a `409` or `422` on the replay takes scenario 4
+diagram shows the success; a `409`, `400` or `422` on the replay takes scenario 4
 from the void on. If the network is still unreachable the session stays
 `PLACING`, and the alert at 20 h comes before the network's 24 h window.
-Omitted: the BFF's polling cadence, which the model does not define; and the
-interplay with `customer-payments`' `VoidUnboundAuthorizations`, which voids an
-authorization with no `CheckoutCompleted` after 24 h (hotspot H6).
+Omitted: the BFF's polling cadence, which this service does not define; and the
+interplay with customer-payments' own 24 h backstop, which voids an
+authorization with no `CheckoutCompleted` (hotspot H6; that policy lives in
+customer-payments, not here).
