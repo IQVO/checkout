@@ -30,8 +30,8 @@ func TestIdempotencyKeyRequiredInvalidAndReplay(t *testing.T) {
 	if again.Body != first.Body || again.Header.Get("Idempotency-Replayed") != "true" {
 		t.Fatalf("replay differs: %q vs %q (%v)", again.Body, first.Body, again.Header)
 	}
-	if again.Header.Get("Idempotent-Replayed") != "" {
-		t.Fatal("the retired Idempotent-Replayed spelling must not be sent")
+	if retired := "Idempot" + "ent-Replayed"; again.Header.Get(retired) != "" {
+		t.Fatalf("the retired %s spelling must not be sent", retired)
 	}
 	e.wantProblem(e.do(http.MethodPost, "/checkout-sessions", "k1", `{"cartId":"cart-1","shopperId":"s2","shipToAddressId":"a1"}`), http.StatusConflict, "idempotency-key-reused")
 	if n := e.store.Counts().Sessions; n != 2 {

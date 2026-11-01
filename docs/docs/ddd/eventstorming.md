@@ -82,7 +82,7 @@ price quote is binding and expiring; its expiry becomes the session's
 ```mermaid
 flowchart TB
     S["Shopper<br/>via storefront-bff"]:::actor
-    C1["ConfirmSession<br/>POST ...:confirm<br/>ErrPriceQuoteExpired"]:::command
+    C1["ConfirmSession<br/>POST .../confirmations<br/>ErrPriceQuoteExpired"]:::command
     G1["CheckoutSession<br/>OPEN to AUTHORIZING"]:::aggregate
     CP["customer-payments"]:::external
     C2["RecordAuthorization<br/>ErrAuthorizationMismatch"]:::command

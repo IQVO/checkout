@@ -82,7 +82,7 @@ offer is no longer `QUOTED` at the pre-check, which fails as
 `ErrOfferNotQuotable` (`422 offer-not-quotable`, no state change; hotspot H3
 on [EventStorming](/docs/ddd/eventstorming)).
 
-## 2. ConfirmSession, part 1: authorize (REST POST ...:confirm)
+## 2. ConfirmSession, part 1: authorize (REST POST .../confirmations)
 
 ```mermaid
 %%{init: {"sequence": {"wrap": true, "width": 110, "actorMargin": 12, "messageMargin": 28, "boxMargin": 6, "noteMargin": 6, "mirrorActors": false}}}%%

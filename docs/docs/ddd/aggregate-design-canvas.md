@@ -105,7 +105,7 @@ Source: `internal/domain/checkoutsession/open.go`, `allocate.go`, `transitions.g
 | `RetryOwedVoids` | this context | Every minute, until success, void the authorization named by `voidOwed` (covers `ErrAuthorizationMismatch` and every definitive-rejection void); `Void` is idempotent. | Clears `voidOwed`; no state change. |
 | `PurgeStoredPlacements` | this context | Drop the stored placement request 24 h after a closed state. | Clears `placement`; no state change, no event. |
 | `ExpireOnQuoteExpiry` | this context | An `OPEN` or `DECLINED` session expires with its price quote. | `OPEN → EXPIRED` and `DECLINED → EXPIRED` (`ExpireSession`). |
-| Idempotent writes | this context | Every write route takes an `Idempotency-Key`; a repeated key returns the stored response of the first call. | A repeated `ConfirmSession` with the same key does not authorize twice. |
+| Idempotent writes | this context | Every POST route takes an `Idempotency-Key`; a repeated key with the same request returns the stored response of the first call (header `Idempotency-Replayed: true`), with another request it is `409 idempotency-key-reused`. | A repeated `ConfirmSession` with the same key does not authorize twice. |
 | Deterministic downstream keys | this context | `<sessionId>:auth:<authAttempt>` on authorize (a new attempt after a decline, the same key for a stuck call), `<sessionId>:void` on void, the `sessionId` on place-order. | No two holds on a card for one session; a replayed place-order is answered with the first response. |
 
 ### 6. Handled Commands
@@ -113,7 +113,7 @@ Source: `internal/domain/checkoutsession/open.go`, `allocate.go`, `transitions.g
 | Command | Trigger | Transition |
 | --- | --- | --- |
 | `OpenSession` | Shopper via BFF, REST `POST /checkout-sessions` (reads the cart, pre-checks offers, issues the `PriceQuote`) | `[*] → OPEN` |
-| `ConfirmSession` | Shopper via BFF, REST `POST /checkout-sessions/{sessionId}:confirm` | `OPEN → AUTHORIZING`; `DECLINED → AUTHORIZING` (increments `authAttempt`) |
+| `ConfirmSession` | Shopper via BFF, REST `POST /checkout-sessions/{sessionId}/confirmations` | `OPEN → AUTHORIZING`; `DECLINED → AUTHORIZING` (increments `authAttempt`) |
 | `RecordAuthorization` | the answer to `AuthorizePayment` (authorized) | `AUTHORIZING → PLACING`; on an amount or currency mismatch `AUTHORIZING → DECLINED` with `voidOwed` |
 | `RecordDecline` | the answer to `AuthorizePayment` (declined) | `AUTHORIZING → DECLINED` |
 | `RecordPlacementInDoubt` | `PlaceOrder` timed out or answered `503`; also each unsuccessful pass of `ResolveInDoubtPlacements` | `PLACING → PLACING` (raises `CheckoutPlacementInDoubt` on the first pass only) |

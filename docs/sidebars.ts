@@ -122,6 +122,11 @@ const sidebars: SidebarsConfig = {
           label: '0008 Requoted delivery dates in the destination\'s time zone',
           href: '/docs/adr/0008-requoted-dates-in-the-destination-time-zone',
         },
+        {
+          type: 'link',
+          label: '0009 Adopt the fleet REST API guideline',
+          href: '/docs/adr/0009-adopt-the-fleet-rest-api-guideline',
+        },
       ],
     },
   ],
