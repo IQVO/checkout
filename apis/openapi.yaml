@@ -25,7 +25,12 @@ info:
     (application/problem+json) whose type is /problems/<slug>; shared types
     are not-found (404), illegal-transition (409), concurrent-update (409)
     and validation-failed (422), plus one kebab-case slug per Err of the
-    model. Every write takes an Idempotency-Key header. No authentication.
+    model. Every POST takes an Idempotency-Key header (1-128 printable ASCII
+    characters): a missing or malformed key is 400 idempotency-key-required /
+    idempotency-key-invalid, a repeat of the same method, path and body replays
+    the stored answer with the response header Idempotency-Replayed: true, and
+    the same key on a different request is 409 idempotency-key-reused. No
+    authentication.
 servers:
   - url: http://localhost:8080
 tags:
@@ -56,12 +61,20 @@ paths:
       responses:
         '201':
           description: The opened session (OPEN).
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CheckoutSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '409':
-          description: cart-not-checkout-ready (ErrCartNotCheckoutReady) or concurrent-update.
+          description: >-
+            cart-not-checkout-ready (ErrCartNotCheckoutReady), concurrent-update,
+            or idempotency-key-reused (the Idempotency-Key was already used with
+            a different request).
           content:
             application/problem+json:
               schema:
@@ -110,7 +123,7 @@ paths:
                 $ref: '#/components/schemas/CheckoutSession'
         '404':
           $ref: '#/components/responses/NotFound'
-  /checkout-sessions/{sessionId}:confirm:
+  /checkout-sessions/{sessionId}/confirmations:
     post:
       tags: [CheckoutSessions]
       operationId: confirmCheckoutSession
@@ -142,6 +155,9 @@ paths:
       responses:
         '200':
           description: The session in a definitive state (COMPLETED, DECLINED, REQUOTE_REQUIRED or FAILED).
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
           content:
             application/json:
               schema:
@@ -152,10 +168,15 @@ paths:
             AUTHORIZING; ResolveStuckAuthorizations re-calls with the same key
             after 2 minutes) or the place-order step (the session stays PLACING,
             the semantic lock). Poll GET /checkout-sessions/{sessionId}.
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CheckoutSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -164,7 +185,9 @@ paths:
             (ErrAuthorizationMismatch, the authorization is voided),
             placement-in-doubt (ErrPlacementInDoubt), void-pending (ErrVoidPending,
             a previous authorization is still being voided), illegal-transition
-            (a confirm while AUTHORIZING) or concurrent-update.
+            (a confirm while AUTHORIZING), concurrent-update, or
+            idempotency-key-reused (the Idempotency-Key was already used with a
+            different request).
           content:
             application/problem+json:
               schema:
@@ -183,7 +206,11 @@ components:
       name: Idempotency-Key
       in: header
       required: true
-      description: A repeated key returns the stored response of the first call.
+      description: >-
+        Client-generated UUID per logical submit, 1-128 printable ASCII
+        characters. A repeat of the same method, path and body replays the
+        stored answer (response header Idempotency-Replayed: true); the same key
+        on a different request is 409 idempotency-key-reused.
       schema:
         type: string
         minLength: 1
@@ -194,7 +221,35 @@ components:
       required: true
       schema:
         type: string
+  headers:
+    IdempotencyReplayed:
+      description: >-
+        Set to `true` on a replay of a stored answer (a retry carrying the same
+        Idempotency-Key, method, path and body), and only on a replay: the first
+        execution of a key never carries it.
+      schema:
+        type: string
+        enum: ['true']
   responses:
+    BadRequest:
+      description: >-
+        malformed-request, idempotency-key-required (no Idempotency-Key header)
+        or idempotency-key-invalid (not 1-128 printable ASCII characters).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            idempotencyKeyRequired:
+              value:
+                type: /problems/idempotency-key-required
+                title: Idempotency-Key header is required
+                status: 400
+            idempotencyKeyInvalid:
+              value:
+                type: /problems/idempotency-key-invalid
+                title: Idempotency-Key header is not valid
+                status: 400
     NotFound:
       description: not-found.
       content:
