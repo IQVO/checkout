@@ -48,11 +48,11 @@ Feature: Confirm a checkout session
     And customer-ordering received 0 calls
 
   Scenario: A missing token is a validation error
-    When I POST "/checkout-sessions/sess-1:confirm" with key "k5" and body {}
+    When I POST "/checkout-sessions/sess-1/confirmations" with key "k5" and body {}
     Then the API answers 422
     And the problem type is "validation-failed"
 
   Scenario: An unknown session is not found
-    When I POST "/checkout-sessions/ghost:confirm" with key "k6" and body {"paymentMethodToken":"tok"}
+    When I POST "/checkout-sessions/ghost/confirmations" with key "k6" and body {"paymentMethodToken":"tok"}
     Then the API answers 404
     And the problem type is "not-found"

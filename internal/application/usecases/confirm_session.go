@@ -11,7 +11,7 @@ import (
 )
 
 // ConfirmSession is the command ConfirmSession
-// (POST /checkout-sessions/{sessionId}:confirm).
+// (POST /checkout-sessions/{sessionId}/confirmations).
 type ConfirmSession struct{ Deps }
 
 // Execute moves OPEN or DECLINED to AUTHORIZING (saved before the call out),

@@ -60,9 +60,9 @@ func (o *Outbox) Events() []shared.Event {
 type IdempotencyStore struct{ s *Store }
 
 // Get implements ports.IdempotencyStore.
-func (i *IdempotencyStore) Get(ctx context.Context, route, key string) (idempotency.Record, error) {
+func (i *IdempotencyStore) Get(ctx context.Context, key string) (idempotency.Record, error) {
 	defer i.s.enter(ctx)()
-	rec, ok := i.s.idempotency[idemKey{route, key}]
+	rec, ok := i.s.idempotency[key]
 	if !ok || i.s.now().Sub(rec.CreatedAt) > idempotency.TTL {
 		return idempotency.Record{}, ports.ErrNotFound
 	}
@@ -70,12 +70,11 @@ func (i *IdempotencyStore) Get(ctx context.Context, route, key string) (idempote
 }
 
 // Put implements ports.IdempotencyStore.
-func (i *IdempotencyStore) Put(ctx context.Context, route, key string, rec idempotency.Record) (bool, error) {
+func (i *IdempotencyStore) Put(ctx context.Context, key string, rec idempotency.Record) (bool, error) {
 	defer i.s.enter(ctx)()
-	k := idemKey{route, key}
-	if old, ok := i.s.idempotency[k]; ok && i.s.now().Sub(old.CreatedAt) <= idempotency.TTL {
+	if old, ok := i.s.idempotency[key]; ok && i.s.now().Sub(old.CreatedAt) <= idempotency.TTL {
 		return false, nil
 	}
-	i.s.idempotency[k] = rec
+	i.s.idempotency[key] = rec
 	return true, nil
 }

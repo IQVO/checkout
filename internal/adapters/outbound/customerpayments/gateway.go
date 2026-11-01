@@ -1,6 +1,6 @@
 // Package customerpayments is the outbound HTTP client of customer-payments:
 // AuthorizePayment (REST POST /payment-authorizations) and VoidAuthorization
-// (REST POST /payment-authorizations/{id}:void).
+// (REST POST /payment-authorizations/{id}/voids).
 package customerpayments
 
 import (
@@ -85,13 +85,13 @@ func decode(payload []byte) (exchange.Authorization, error) {
 	return exchange.Authorization{ID: a.AuthorizationID, Authorized: true, Currency: a.Currency, TotalMinor: a.TotalMinor}, nil
 }
 
-// Void implements ports.PaymentGateway: POST /payment-authorizations/{id}:void.
+// Void implements ports.PaymentGateway: POST /payment-authorizations/{id}/voids.
 // A 200 is done; a 404 (nothing to void) and a 409 illegal-transition (already
 // voided, captured or expired) mean there is nothing left to do. A transport
 // error, a timeout, a 409 concurrent-update and any other status are
 // ports.ErrPaymentsUnavailable, so the debt stays and RetryOwedVoids tries again.
 func (g *Gateway) Void(ctx context.Context, key, authorizationID string) error {
-	resp, err := g.c.Do(ctx, http.MethodPost, "/payment-authorizations/"+url.PathEscape(authorizationID)+":void", key, nil)
+	resp, err := g.c.Do(ctx, http.MethodPost, "/payment-authorizations/"+url.PathEscape(authorizationID)+"/voids", key, nil)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ports.ErrPaymentsUnavailable, err)
 	}

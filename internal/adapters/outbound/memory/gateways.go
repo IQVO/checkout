@@ -2,6 +2,8 @@ package memory
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -100,6 +102,13 @@ type Quoter struct {
 // NewQuoter returns a quoter reading the clock.
 func NewQuoter(clock ports.Clock) *Quoter { return &Quoter{clock: clock, TTL: 15 * time.Minute} }
 
+// quoteID names the quote after its key, so the same key gets the same quote
+// and a key of any length still yields a valid aggregate id.
+func quoteID(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return "quote-" + hex.EncodeToString(sum[:8])
+}
+
 // IssueQuote implements ports.PriceQuoter.
 func (q *Quoter) IssueQuote(_ context.Context, key string, req exchange.QuoteRequest) (checkoutsession.PriceQuote, error) {
 	q.mu.Lock()
@@ -108,7 +117,7 @@ func (q *Quoter) IssueQuote(_ context.Context, key string, req exchange.QuoteReq
 	if q.Err != nil {
 		return checkoutsession.PriceQuote{}, q.Err
 	}
-	out := checkoutsession.PriceQuote{QuoteID: "quote-" + key, Currency: "USD", ExpiresAt: q.clock.Now().Add(q.TTL)}
+	out := checkoutsession.PriceQuote{QuoteID: quoteID(key), Currency: "USD", ExpiresAt: q.clock.Now().Add(q.TTL)}
 	var items int64
 	for _, l := range req.Lines {
 		total := int64(l.Quantity) * 1000

@@ -41,7 +41,7 @@ func TestRealWiringPlacesTheOrderAndPublishesTheEvents(t *testing.T) {
 		t.Fatalf("open = %d %s", opened.status, opened.body)
 	}
 	id, _ := opened.json(t)["sessionId"].(string)
-	done := svc.call(t, "POST", "/checkout-sessions/"+id+":confirm", "confirm-1", confirmBody)
+	done := svc.call(t, "POST", "/checkout-sessions/"+id+"/confirmations", "confirm-1", confirmBody)
 	m := done.json(t)
 	if done.status != http.StatusOK || m["state"] != "COMPLETED" || m["orderId"] != "order-e2e" {
 		t.Fatalf("confirm = %d %s", done.status, done.body)
@@ -70,7 +70,7 @@ func TestRealWiringResolvesAnInDoubtPlacement(t *testing.T) {
 	svc := boot(t, bootEnv(t, dsn, kafkatest.Brokers(t), sib))
 
 	id, _ := svc.call(t, "POST", "/checkout-sessions", "open-2", openBody).json(t)["sessionId"].(string)
-	r := svc.call(t, "POST", "/checkout-sessions/"+id+":confirm", "confirm-2", confirmBody)
+	r := svc.call(t, "POST", "/checkout-sessions/"+id+"/confirmations", "confirm-2", confirmBody)
 	if r.status != http.StatusAccepted || r.json(t)["state"] != "PLACING" {
 		t.Fatalf("confirm = %d %s", r.status, r.body)
 	}

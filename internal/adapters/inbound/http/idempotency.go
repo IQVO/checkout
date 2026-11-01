@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/IQVO/checkout/internal/application/idempotency"
@@ -17,26 +18,38 @@ import (
 // wrapped by RequireIdempotencyKey.
 const IdempotencyKeyHeader = "Idempotency-Key"
 
-// ReplayedHeader marks a response that was served from the stored record.
-const ReplayedHeader = "Idempotent-Replayed"
+// ReplayedHeader marks a response that was served from the stored record. It
+// is set on every replay and only on a replay.
+const ReplayedHeader = "Idempotency-Replayed"
 
 // maxKeyLength bounds an Idempotency-Key.
 const maxKeyLength = 128
 
-// RequireIdempotencyKey is the Idempotency-Key middleware of the three POST
-// routes, one instance per route name. The first response below 500 for a
-// (route, key) is stored for 24 hours (idempotency.TTL) in the store; the same
-// key and request replays it, the same key with another request is 422
+// RequireIdempotencyKey is the Idempotency-Key middleware of every POST route
+// (REST API guideline section 2). The key is global to the service: the stored
+// record is looked up by the key alone and compared by fingerprint (method +
+// path + sha256 of the body). The first response below 500 for a key is stored
+// for 24 hours (idempotency.TTL); the same key and fingerprint replays it with
+// Idempotency-Replayed: true, the same key with another fingerprint is 409
 // idempotency-key-reused. A 5xx is never stored, so the key can retry the real
-// work. Two concurrent first requests may both run: every command is idempotent
-// by itself (the order id is derived from the key, cancel is a no-op the second
-// time), and the store keeps the first record.
-func RequireIdempotencyKey(store ports.IdempotencyStore, clock ports.Clock, route string) func(http.Handler) http.Handler {
+// work. Requests that carry the same key are serialised inside the process, so
+// N concurrent identical requests run the command once and the others replay
+// its answer; across replicas the store keeps the first record and the loser
+// replays it.
+//
+// Build ONE middleware for the router and share it between the routes: the key
+// locks live in the returned closure.
+func RequireIdempotencyKey(store ports.IdempotencyStore, clock ports.Clock) func(http.Handler) http.Handler {
+	locks := &keyLocks{held: map[string]*keyLock{}}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key := r.Header.Get(IdempotencyKeyHeader)
-			if key == "" || len(key) > maxKeyLength {
-				writeProblem(w, r, idempotencyKeyRequired, "send an Idempotency-Key header of 1 to 128 characters, unique per logical request")
+			if key == "" {
+				writeProblem(w, r, idempotencyKeyRequired, "send an Idempotency-Key header of 1 to 128 printable ASCII characters, unique per logical request")
+				return
+			}
+			if !validKey(key) {
+				writeProblem(w, r, idempotencyKeyInvalid, "the Idempotency-Key must be 1 to 128 printable ASCII characters")
 				return
 			}
 			body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes+1))
@@ -46,38 +59,67 @@ func RequireIdempotencyKey(store ports.IdempotencyStore, clock ports.Clock, rout
 				return
 			}
 			r.Body = io.NopCloser(bytes.NewReader(body))
-			hash := requestHash(r, body)
-
-			rec, err := store.Get(r.Context(), route, key)
-			switch {
-			case err == nil:
-				replay(w, r, rec, hash)
-				return
-			case !errors.Is(err, ports.ErrNotFound):
-				writeError(w, r, err)
-				return
-			}
-			rec2 := &capture{header: http.Header{}}
-			next.ServeHTTP(rec2, r)
-			if rec2.status() < http.StatusInternalServerError {
-				stored := idempotency.Record{
-					RequestHash: hash, Status: rec2.status(), ContentType: rec2.header.Get("Content-Type"),
-					Body: rec2.body.Bytes(), CreatedAt: clock.Now().UTC().Truncate(time.Microsecond),
-				}
-				if _, err := store.Put(r.Context(), route, key, stored); err != nil {
-					writeError(w, r, err)
-					return
-				}
-			}
-			rec2.flushTo(w)
+			defer locks.lock(key)()
+			serve(w, r, next, store, clock, key, requestHash(r, body))
 		})
 	}
 }
 
+// serve replays the stored record of key, rejects a reuse, or runs next and
+// stores its answer.
+func serve(w http.ResponseWriter, r *http.Request, next http.Handler, store ports.IdempotencyStore, clock ports.Clock, key, hash string) {
+	rec, err := store.Get(r.Context(), key)
+	switch {
+	case err == nil:
+		replay(w, r, rec, hash)
+		return
+	case !errors.Is(err, ports.ErrNotFound):
+		writeError(w, r, err)
+		return
+	}
+	out := &capture{header: http.Header{}}
+	next.ServeHTTP(out, r)
+	if out.status() < http.StatusInternalServerError {
+		stored := idempotency.Record{
+			RequestHash: hash, Status: out.status(), ContentType: out.header.Get("Content-Type"),
+			Body: out.body.Bytes(), CreatedAt: clock.Now().UTC().Truncate(time.Microsecond),
+		}
+		won, err := store.Put(r.Context(), key, stored)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		if !won {
+			// Another replica stored a record for this key first: answer with it.
+			if first, err := store.Get(r.Context(), key); err == nil {
+				replay(w, r, first, hash)
+				return
+			}
+		}
+	}
+	out.flushTo(w)
+}
+
+// validKey reports whether key is 1 to 128 printable ASCII characters.
+func validKey(key string) bool {
+	if len(key) == 0 || len(key) > maxKeyLength {
+		return false
+	}
+	for i := 0; i < len(key); i++ {
+		if key[i] < 0x20 || key[i] > 0x7e {
+			return false
+		}
+	}
+	return true
+}
+
+// requestHash is the request fingerprint: sha256 over the method, the path and
+// the sha256 of the body.
 func requestHash(r *http.Request, body []byte) string {
+	sum := sha256.Sum256(body)
 	h := sha256.New()
-	h.Write([]byte(r.Method + " " + r.URL.EscapedPath() + "?" + r.URL.RawQuery + "\n"))
-	h.Write(body)
+	h.Write([]byte(r.Method + " " + r.URL.EscapedPath() + "\n"))
+	h.Write([]byte(hex.EncodeToString(sum[:])))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -92,6 +134,38 @@ func replay(w http.ResponseWriter, r *http.Request, rec idempotency.Record, hash
 	w.Header().Set(ReplayedHeader, "true")
 	w.WriteHeader(rec.Status)
 	_, _ = w.Write(rec.Body)
+}
+
+// keyLocks serialises the requests that carry the same Idempotency-Key.
+type keyLocks struct {
+	mu   sync.Mutex
+	held map[string]*keyLock
+}
+
+type keyLock struct {
+	sync.Mutex
+	users int
+}
+
+// lock blocks until the caller owns key and returns the release func.
+func (k *keyLocks) lock(key string) func() {
+	k.mu.Lock()
+	l := k.held[key]
+	if l == nil {
+		l = &keyLock{}
+		k.held[key] = l
+	}
+	l.users++
+	k.mu.Unlock()
+	l.Lock()
+	return func() {
+		l.Unlock()
+		k.mu.Lock()
+		if l.users--; l.users == 0 {
+			delete(k.held, key)
+		}
+		k.mu.Unlock()
+	}
 }
 
 // capture records the handler's response so it can be stored before anything

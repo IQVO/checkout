@@ -58,13 +58,17 @@ type UnitOfWork interface {
 	Do(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
-// IdempotencyStore remembers the first response per (route, key) for 24 hours.
+// IdempotencyStore remembers the first response per Idempotency-Key for 24
+// hours. The key is global to the service, not scoped to a route: the record
+// carries the request fingerprint (method + path + body hash), so the same key
+// on another route or with another body is detected as a reuse.
 type IdempotencyStore interface {
 	// Get returns the stored record, or ErrNotFound (expired records are
 	// treated as absent).
-	Get(ctx context.Context, route, key string) (idempotency.Record, error)
-	// Put stores the record unless one exists; it reports whether it stored.
-	Put(ctx context.Context, route, key string, rec idempotency.Record) (bool, error)
+	Get(ctx context.Context, key string) (idempotency.Record, error)
+	// Put stores the record unless a fresh one exists; it reports whether it
+	// stored.
+	Put(ctx context.Context, key string, rec idempotency.Record) (bool, error)
 }
 
 // Clock is the service's notion of "now"; use cases stamp aggregates with it.

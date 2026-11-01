@@ -25,14 +25,12 @@ import (
 	"github.com/IQVO/checkout/internal/domain/shared"
 )
 
-type idemKey struct{ route, key string }
-
 // Store is the shared state of the in-memory doubles.
 type Store struct {
 	mu          sync.Mutex
 	sessions    map[checkoutsession.ID]checkoutsession.Snapshot
 	outbox      []shared.Event
-	idempotency map[idemKey]idempotency.Record
+	idempotency map[string]idempotency.Record
 	clock       ports.Clock
 }
 
@@ -42,7 +40,7 @@ type Store struct {
 // never on the wall.
 func NewStore(clock ports.Clock) *Store {
 	return &Store{
-		sessions: map[checkoutsession.ID]checkoutsession.Snapshot{}, idempotency: map[idemKey]idempotency.Record{}, clock: clock,
+		sessions: map[checkoutsession.ID]checkoutsession.Snapshot{}, idempotency: map[string]idempotency.Record{}, clock: clock,
 	}
 }
 
