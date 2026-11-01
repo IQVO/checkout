@@ -16,7 +16,9 @@ import (
 
 // TestIdempotencyOverRealPostgres drives the Idempotency-Key contract (REST API
 // guideline section 2) through the shipped binary: real router, real Postgres
-// store, no skip gate.
+// store, no skip gate. Keep this file's name sorting before e2e_flow_*: go test
+// runs files in name order and TestRealWiringReadyzIs503WhileKafkaIsDown stops
+// the shared Kafka broker for every test after it.
 func TestIdempotencyOverRealPostgres(t *testing.T) {
 	sib := fakeSiblings(t)
 	dsn := pgtest.URL(t)
