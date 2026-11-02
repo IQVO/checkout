@@ -82,8 +82,8 @@ func Card(cfg Config) *a2a.AgentCard {
 		SupportedInterfaces: []*a2a.AgentInterface{
 			a2a.NewAgentInterface(cfg.AgentURL, a2a.TransportProtocolJSONRPC),
 		},
-		DefaultInputModes:  []string{"application/json", "text/plain"},
-		DefaultOutputModes: []string{"application/json", "text/plain"},
+		DefaultInputModes:  []string{modeJSON, "text/plain"},
+		DefaultOutputModes: []string{modeJSON, "text/plain"},
 		Capabilities:       a2a.AgentCapabilities{Streaming: false},
 		Skills: []a2a.AgentSkill{
 			{
@@ -91,7 +91,7 @@ func Card(cfg Config) *a2a.AgentCard {
 				Name:        "Where does a checkout session stand",
 				Description: "Read one checkout session by its sessionId: state, cart and shopper references, numbered lines, shipment groups (groupNo, offerId, tier, lineNos, amountMinor), the binding total and currency, when the price quote expires, the payment authorizationId, the placed orderId, the re-quoted offers of a REQUOTE_REQUIRED session and the failureCode of a FAILED one. PLACING means the place-order outcome is unknown and a resolver is replaying it: ask again later. Answers a 404 problem for an unknown or malformed sessionId. Persists nothing.",
 				Tags:        []string{"checkout", "session", "read"},
-				InputModes:  []string{"application/json"},
+				InputModes:  []string{modeJSON},
 				Examples: []string{
 					`{"skill":"checkout_session_status","arguments":{"sessionId":"sess-3f9c1a2b4d5e"}}`,
 				},
