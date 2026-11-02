@@ -3,6 +3,7 @@ package usecases_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -79,5 +80,26 @@ func TestOpenSessionUnknownCartAndContractBug(t *testing.T) {
 	_, err = usecases.OpenSession{Deps: e.deps}.Execute(context.Background(), usecases.OpenCommand{RequestKey: "k", CartID: "cart-1", ShopperID: "s", ShipToAddressID: "a"})
 	if !errors.Is(err, cs.ErrContractViolation) || !equalStrings(e.alerts.Codes(), []string{"sibling-contract-violation"}) {
 		t.Fatalf("err %v alerts %v", err, e.alerts.Codes())
+	}
+}
+
+// A request key at the 128 character bound must not overflow the bound of the
+// downstream pricing call once the suffix is added, and must stay deterministic
+// so a retry of the same open gets the same quote.
+func TestOpenSessionPriceQuoteKeyStaysWithinTheKeyBound(t *testing.T) {
+	long := strings.Repeat("k", 128)
+	var keys []string
+	for range 2 {
+		e := newEnv()
+		_, err := usecases.OpenSession{Deps: e.deps}.Execute(context.Background(), usecases.OpenCommand{
+			RequestKey: long, CartID: "cart-1", ShopperID: "shopper-1", ShipToAddressID: "addr-1",
+		})
+		if err != nil {
+			t.Fatalf("OpenSession: %v", err)
+		}
+		keys = append(keys, e.quoter.Keys[0])
+	}
+	if len(keys[0]) > 128 || !strings.HasSuffix(keys[0], ":price-quote") || keys[0] != keys[1] {
+		t.Fatalf("price quote keys %q %q", keys[0], keys[1])
 	}
 }

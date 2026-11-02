@@ -39,7 +39,7 @@ components. `EXPOSE 8080 8090 8093`.
 
 - **REST API** on `HTTP_ADDR`: `POST /checkout-sessions`,
   `GET /checkout-sessions/{sessionId}`,
-  `POST /checkout-sessions/{sessionId}:confirm`, `GET /healthz`, `GET /readyz`
+  `POST /checkout-sessions/{sessionId}/confirmations`, `GET /healthz`, `GET /readyz`
   (`internal/adapters/inbound/http/server.go`). Both POSTs require an
   `Idempotency-Key`.
 - **Outbox relay**: polls `outbox_events` and publishes pending rows to Kafka
@@ -178,14 +178,16 @@ committed by the policies is stranded.
 
 ### Migrations
 
-One embedded migration, `0001_checkout_schema` (`internal/adapters/outbound/postgres/migrations`),
-creates `checkout_sessions`, `idempotency_keys` and `outbox_events`.
+Two embedded migrations (`internal/adapters/outbound/postgres/migrations`):
+`0001_checkout_schema` creates `checkout_sessions`, `idempotency_keys` and
+`outbox_events`; `0002_idempotency_key_global` makes the `Idempotency-Key` the
+sole primary key of `idempotency_keys` (the `route` column goes).
 Migrations run at boot, in all three binaries, over `MIGRATIONS_DATABASE_URL`
 (falling back to `DATABASE_URL`), inside a bounded retry: 5 attempts with 1,
 2, 4 and 8 s backoff (15 s total), because the first outbound dial of an
 injected pod can be reset by the mesh sidecar. After the last attempt the
 process refuses to boot and logs the last error. `schema_migrations` records
-`version 1, dirty f`. There is no manual migration step.
+`version 2, dirty f`. There is no manual migration step.
 
 ## Kafka
 
@@ -305,14 +307,18 @@ test fails the chart if it is.
 
 `internal/adapters/inbound/http/idempotency.go`:
 
-- Both POST routes require an `Idempotency-Key` header of 1 to 128 characters.
-- The first response below 500 is stored per `(route, key)` for 24 h
-  (`internal/application/idempotency`); the request hash covers the method,
-  path, query and body.
+- Both POST routes require an `Idempotency-Key` header of 1 to 128 printable
+  ASCII characters (`400 idempotency-key-required` when absent,
+  `400 idempotency-key-invalid` when malformed or longer than 128).
+- The first response below 500 is stored per key for 24 h
+  (`internal/application/idempotency`); the key is global to the service, and
+  the stored fingerprint covers the method, the path and the SHA-256 of the
+  body.
 - A repeat with the same request replays the stored response with header
-  `Idempotent-Replayed: true`; the same key with a different request is 422
-  `idempotency-key-reused`. 5xx responses are never stored, so the key stays
-  retryable.
+  `Idempotency-Replayed: true` (only on a replay); the same key with a different
+  request is 409 `idempotency-key-reused`. 5xx responses are never stored, so
+  the key stays retryable. Requests with one key are serialised in the process,
+  so concurrent identical requests run the command once.
 - An expired record is ignored on read and overwritten by the next write for
   the same key, but no policy deletes `idempotency_keys` rows (see
   [Troubleshooting](/docs/operations/troubleshooting#idempotency_keys-grows)).
@@ -389,9 +395,9 @@ test fails the chart if it is.
 
 ### idempotency-key-reused storms
 
-- Symptom: a burst of 422 `idempotency-key-reused`.
+- Symptom: a burst of 409 `idempotency-key-reused`.
 - Diagnosis: callers reuse a key while regenerating the body. Correct replays
-  come back with `Idempotent-Replayed: true` and are not a fault.
+  come back with `Idempotency-Replayed: true` and are not a fault.
 - Action: fix the caller to keep the body byte-stable per logical request, or
   mint a fresh key.
 
@@ -406,8 +412,10 @@ test fails the chart if it is.
 - Scale: the HPA is off by default (`autoscaling.api`). More than one replica
   is safe for the relay (row claims) and the saga writes (optimistic version
   saves) but has not been load-tested.
-- Roll back: `helm rollback checkout`. The schema has one migration and no
-  destructive step, so an older image runs on the same database.
+- Roll back: `helm rollback checkout`. Migration 0002 drops the `route`
+  column of `idempotency_keys`, so an image from before the REST guideline
+  cutover cannot write idempotency keys on a migrated database: roll back the
+  whole cutover set together.
 - Look at one session: `GET /checkout-sessions/{sessionId}` (REST), the MCP
   tool `get_checkout_session` or the A2A skill `checkout_session_status`; all
   three read the same row.

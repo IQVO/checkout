@@ -32,7 +32,7 @@ type PaymentGateway interface {
 	// Authorize calls POST /payment-authorizations with the key
 	// <sessionId>:auth:<attempt> (H2). ErrPaymentsUnavailable on failure.
 	Authorize(ctx context.Context, key string, req exchange.AuthorizeRequest) (exchange.Authorization, error)
-	// Void calls POST /payment-authorizations/{id}:void with the key
+	// Void calls POST /payment-authorizations/{id}/voids with the key
 	// <sessionId>:void. An authorization that is already voided or unknown
 	// counts as voided (the call is idempotent). ErrPaymentsUnavailable on failure.
 	Void(ctx context.Context, key, authorizationID string) error

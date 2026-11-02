@@ -92,7 +92,7 @@ with a span-carrying context also carry `trace_id` and `span_id`.
 One line per HTTP request on every binary (`/healthz` and `/readyz` excluded):
 
 ```json
-{"time":"2026-10-31T11:28:59.066321-03:00","level":"INFO","msg":"http request","method":"POST","route":"/checkout-sessions/{sessionId}:confirm","status":200,"duration_ms":22,"bytes":530,"request_id":"host/6PjAIOZFQZ-000005","trace_id":"766e93aad4b6a5d1c52e413bbd667a19","span_id":"f621fd37e5f0d148"}
+{"time":"2026-10-31T11:28:59.066321-03:00","level":"INFO","msg":"http request","method":"POST","route":"/checkout-sessions/{sessionId}/confirmations","status":200,"duration_ms":22,"bytes":530,"request_id":"host/6PjAIOZFQZ-000005","trace_id":"766e93aad4b6a5d1c52e413bbd667a19","span_id":"f621fd37e5f0d148"}
 ```
 
 Fields: `method`, `route` (the matched pattern, `unmatched` when nothing

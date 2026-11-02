@@ -26,7 +26,7 @@ machine behind the use cases is on the
 | Use case | Trigger | Inbound adapter | Raises |
 | --- | --- | --- | --- |
 | `OpenSession` | the shopper, through the BFF | REST `POST /checkout-sessions` | `CheckoutOpened` |
-| `ConfirmSession` | the shopper, through the BFF | REST `POST /checkout-sessions/{sessionId}:confirm` | the event of the outcome (below) |
+| `ConfirmSession` | the shopper, through the BFF | REST `POST /checkout-sessions/{sessionId}/confirmations` | the event of the outcome (below) |
 | `GetSession` | anyone | REST `GET /checkout-sessions/{sessionId}`, MCP `get_checkout_session`, A2A `checkout_session_status` | none |
 | `ResolveInDoubtPlacements` | clock, 15 s | scheduler | as the settlement it ends in |
 | `ResolveStuckAuthorizations` | clock, 30 s | scheduler | as the settlement it ends in |
@@ -79,7 +79,7 @@ answered; they have no route of their own and are described as steps below.
 
 ## ConfirmSession
 
-- **Trigger:** `POST /checkout-sessions/{sessionId}:confirm`, `Idempotency-Key`
+- **Trigger:** `POST /checkout-sessions/{sessionId}/confirmations`, `Idempotency-Key`
   required.
 - **Input:** `paymentMethodToken` (the PSP token, never a card number; non-blank,
   at most 512 characters).

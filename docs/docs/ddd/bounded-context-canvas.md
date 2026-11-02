@@ -75,7 +75,7 @@ flowchart LR
     BC -.->|"qry - REST<br/>GET /carts/{cartId}<br/>GetCart"| out0
     BC -.->|"qry - REST<br/>GET /delivery-offers/{offerId}<br/>GetDeliveryOffer"| out3
     BC -->|"cmd - REST<br/>POST /price-quotes<br/>IssuePriceQuote"| out1
-    BC -->|"cmd - REST<br/>POST /payment-authorizations, :void<br/>AuthorizePayment, VoidAuthorization"| out2
+    BC -->|"cmd - REST<br/>POST /payment-authorizations, .../voids<br/>AuthorizePayment, VoidAuthorization"| out2
     BC -->|"cmd - REST via ACL<br/>POST /checkout<br/>PlaceOrder"| out4
     BC ==>|"evt - Kafka<br/>retailnetwork.checkout.events<br/>CheckoutCompleted"| out0
     BC ==>|"evt - Kafka<br/>retailnetwork.checkout.events<br/>CheckoutCompleted"| out2
@@ -140,7 +140,7 @@ To run the purchase saga. The context:
 | Collaborator | Message | Type | Channel | Relationship |
 | --- | --- | --- | --- | --- |
 | Shopper via `storefront-bff` | `OpenSession` | Command | REST `POST /checkout-sessions` | UI |
-| Shopper via `storefront-bff` | `ConfirmSession` | Command | REST `POST /checkout-sessions/{sessionId}:confirm` | UI |
+| Shopper via `storefront-bff` | `ConfirmSession` | Command | REST `POST /checkout-sessions/{sessionId}/confirmations` | UI |
 | Shopper via `storefront-bff` | `GetSession` | Query | REST `GET /checkout-sessions/{sessionId}` | UI |
 | AI clients | `get_checkout_session` | Query | MCP, Streamable HTTP, `cmd/mcp` | read-only adapter over `GetSession` |
 | agents | `checkout_session_status` | Query | A2A JSON-RPC, `cmd/a2a` | read-only adapter over `GetSession` |
@@ -162,7 +162,7 @@ MCP (`get_checkout_session`) and A2A (`checkout_session_status`).
 | `delivery-promise` (network) | `GetDeliveryOffer` | Query | REST `GET /delivery-offers/{offerId}` (at open: pre-check that every selected offer is still `QUOTED`, with a 2-minute margin) | Open Host Service; we are the Customer |
 | `pricing` | `IssuePriceQuote` | Command | REST `POST /price-quotes` | Customer/Supplier (we are the Customer) |
 | `customer-payments` | `AuthorizePayment` | Command | REST `POST /payment-authorizations` (`Idempotency-Key` `<sessionId>:auth:<attempt>`, allocations per group) | Customer/Supplier (we are the Customer) |
-| `customer-payments` | `VoidAuthorization` | Command | REST `POST /payment-authorizations/{authorizationId}:void` (`Idempotency-Key` `<sessionId>:void`; after a requote, a rejection, a mismatching authorization or the 22 h give-up) | Customer/Supplier (we are the Customer) |
+| `customer-payments` | `VoidAuthorization` | Command | REST `POST /payment-authorizations/{authorizationId}/voids` (`Idempotency-Key` `<sessionId>:void`; after a requote, a rejection, a mismatching authorization or the 22 h give-up) | Customer/Supplier (we are the Customer) |
 | `customer-ordering` (network) | `PlaceOrder` | Command | REST `POST /checkout` through the ACL (`internal/adapters/outbound/customerordering`); `Idempotency-Key` is the `sessionId`; `shipToAddressId` (NG1), never an inline address | Open Host Service behind an Anti-Corruption Layer; we are the Customer |
 | `shopping-cart`, `customer-payments` | `CheckoutCompleted` | Event | Kafka `retailnetwork.checkout.events`, `com.retailnetwork.storefront.checkout.checkoutsession.CheckoutCompleted` | Customer/Supplier (we are the Supplier) |
 | analytics only | `CheckoutOpened` | Event | Kafka `retailnetwork.checkout.analytics`, `com.retailnetwork.storefront.checkout.checkoutsession.CheckoutOpened` | analytics stream |
@@ -224,7 +224,7 @@ Top terms: **Checkout Session**, **Place-Order Step** (the network's
   `requotedOffers`) stay inside the ACL.
 - `customer-payments` returns a decline as a definitive answer and a
   successful void as a definitive answer; the session records both.
-- Every write route is idempotent on `Idempotency-Key`; every published event
+- Every POST route is idempotent on `Idempotency-Key` (global to the service, 409 on reuse); every published event
   leaves through the transactional outbox.
 - One configured currency everywhere; the session records `currency` and
   `totalMinor` from the quote, and an `amountMinor` per group.

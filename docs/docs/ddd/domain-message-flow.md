@@ -68,7 +68,7 @@ sequenceDiagram
     participant CO as customer-ordering
     participant K as Kafka
     participant SC as shopping-cart
-    BFF->>CK: cmd: ConfirmSession<br/>POST :confirm, token
+    BFF->>CK: cmd: ConfirmSession<br/>POST .../confirmations, token
     Note over CK: ErrPriceQuoteExpired<br/>OPEN to AUTHORIZING
     CK->>CP: cmd: AuthorizePayment<br/>key sessionId:auth:attempt,<br/>allocations per group
     CP-->>CK: cmd: reply authorizationId, total
@@ -148,7 +148,7 @@ sequenceDiagram
         CO-->>CK: cmd: reply 409 with requoted offers
         Note over CK: the ACL maps it to a requote<br/>RecordRequoteRequired<br/>PLACING to REQUOTE_REQUIRED<br/>void owed
         CK->>K: evt: checkoutsession.CheckoutRequoteRequired
-        CK->>CP: cmd: VoidAuthorization<br/>POST :void<br/>key sessionId:void
+        CK->>CP: cmd: VoidAuthorization<br/>POST .../voids<br/>key sessionId:void
         CP-->>CK: cmd: reply voided
         CK-->>BFF: cmd: reply 200 REQUOTE_REQUIRED<br/>with requotedOffers
     else 400 or 422, a contract bug
@@ -171,7 +171,7 @@ then attempted at once. When the void itself fails, the debt stays on the
 session and `RetryOwedVoids` retries it every minute (hotspot H5). The shopper starts the
 next attempt from the cart, with a new session. The REST contract says the BFF
 writes the requoted offers into the cart as a new quote; the cart's
-`AcceptRequotedOffers` (`POST /carts/{cartId}/delivery/requoted`, hotspot H10)
+`AcceptRequotedOffers` (`POST /carts/{cartId}/delivery-requote-acceptances`, hotspot H10)
 takes them, though `storefront-bff` has no route for it yet (both outside this
 repository, not verified here). Omitted: the network's wire shapes
 (`offer-not-quotable`, `requotedOffers`), which are the ACL's concern

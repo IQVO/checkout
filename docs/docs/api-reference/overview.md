@@ -33,7 +33,7 @@ spec lists the three session routes and not the two probes. See the
 | --- | --- | --- | --- |
 | CheckoutSessions | `POST /checkout-sessions` | `openCheckoutSession` | `201`, the session `OPEN` with its binding total; `Idempotency-Key` required |
 | CheckoutSessions | `GET /checkout-sessions/{sessionId}` | `getCheckoutSession` | `200`, the session; `404 not-found` |
-| CheckoutSessions | `POST /checkout-sessions/{sessionId}:confirm` | `confirmCheckoutSession` | `200` with the session in a definitive state (`COMPLETED`, `DECLINED`, `REQUOTE_REQUIRED`, `FAILED`); `202` while an outcome is unknown (`AUTHORIZING` or `PLACING`); `Idempotency-Key` required |
+| CheckoutSessions | `POST /checkout-sessions/{sessionId}/confirmations` | `confirmCheckoutSession` | `200` with the session in a definitive state (`COMPLETED`, `DECLINED`, `REQUOTE_REQUIRED`, `FAILED`); `202` while an outcome is unknown (`AUTHORIZING` or `PLACING`); `Idempotency-Key` required |
 | Health | `GET /healthz` | none (not in the spec) | `200 {"status":"ok"}`, liveness only |
 | Health | `GET /readyz` | none (not in the spec) | `200 {"status":"ready"}`, or `503` while draining or while Postgres or Kafka is unreachable |
 
@@ -46,22 +46,27 @@ spec lists the three session routes and not the two probes. See the
   `failureCode` are `null` until they exist; `requotedOffers` appears only on a
   `REQUOTE_REQUIRED` session. `version` grows by one per change.
 - **`Idempotency-Key`.** Required on both POST routes
-  (`internal/adapters/inbound/http/idempotency.go`), 1 to 128 characters,
-  otherwise `400 idempotency-key-required`. The first response below 500 is
-  stored per (route, key) for 24 h. An equal request replays it with the header
-  `Idempotent-Replayed: true`; the same key with a different method, path, query
-  or body is `422 idempotency-key-reused`. A 5xx is never stored.
+  (`internal/adapters/inbound/http/idempotency.go`): 1 to 128 printable ASCII
+  characters, otherwise `400 idempotency-key-required` (absent) or
+  `400 idempotency-key-invalid` (malformed or longer than 128). The key is
+  global to the service, not per route. The first response below 500 is stored
+  under the key for 24 h with the request fingerprint (method, path and
+  SHA-256 of the body). An equal request replays it with the header
+  `Idempotency-Replayed: true` (only on a replay); the same key with a
+  different method, path or body is `409 idempotency-key-reused`. A 5xx is
+  never stored. Concurrent requests with one key run the command once.
 - **`202` is not an error.** It means the authorization or the place-order
   outcome is unknown; the session is saved and a policy resolves it. Poll
   `GET /checkout-sessions/{sessionId}`.
 - **Errors** are RFC 9457 `application/problem+json` with
   `type = /problems/<slug>` (a relative URI), `title`, `status`, `detail` and
   `instance` (the request path). The slugs the code can answer:
-  `malformed-request` (400), `idempotency-key-required` (400), `not-found`
+  `malformed-request` (400), `idempotency-key-required` (400),
+  `idempotency-key-invalid` (400), `not-found`
   (404), `resource-not-found` (404, a NUL character in the path),
   `cart-not-checkout-ready`, `session-closed`, `authorization-mismatch`,
   `placement-in-doubt`, `void-pending`, `illegal-transition`,
-  `concurrent-update` (all 409), `idempotency-key-reused`, `validation-failed`,
+  `concurrent-update`, `idempotency-key-reused` (all 409), `validation-failed`,
   `price-quote-expired`, `offer-not-quotable`, `price-quote-rejected` (all 422),
   `upstream-contract-violation` (502), `shopping-cart-unavailable`,
   `delivery-promise-unavailable`, `pricing-unavailable`,

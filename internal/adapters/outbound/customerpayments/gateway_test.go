@@ -91,7 +91,7 @@ func TestVoidIsIdempotentAndEscapesTheId(t *testing.T) {
 	if err := g.Void(context.Background(), "sess-1:void", "auth/1"); err != nil {
 		t.Fatal(err)
 	}
-	if got.method != "POST" || got.path != "/payment-authorizations/auth%2F1:void" || got.key != "sess-1:void" {
+	if got.method != "POST" || got.path != "/payment-authorizations/auth%2F1/voids" || got.key != "sess-1:void" {
 		t.Fatalf("request %+v", got)
 	}
 	for name, c := range map[string]struct {

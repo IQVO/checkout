@@ -55,6 +55,7 @@ type siblings struct {
 	*httptest.Server
 	mu          sync.Mutex
 	placeStatus int
+	cartDown    bool
 	calls       []string
 	checkoutKey []string
 }
@@ -63,6 +64,13 @@ func (s *siblings) setPlaceStatus(code int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.placeStatus = code
+}
+
+// setCartDown makes GET /carts/cart-1 answer 503 (shopping-cart unavailable).
+func (s *siblings) setCartDown(down bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cartDown = down
 }
 
 func (s *siblings) called(prefix string) int {
@@ -88,7 +96,7 @@ func fakeSiblings(t *testing.T) *siblings {
 func (s *siblings) serve(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.calls = append(s.calls, r.Method+" "+r.URL.Path)
-	status := s.placeStatus
+	status, down := s.placeStatus, s.cartDown
 	if r.URL.Path == "/checkout" {
 		s.checkoutKey = append(s.checkoutKey, r.Header.Get("Idempotency-Key"))
 	}
@@ -96,6 +104,8 @@ func (s *siblings) serve(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	w.Header().Set("Content-Type", "application/json")
 	switch {
+	case down && r.Method == http.MethodGet && r.URL.Path == "/carts/cart-1":
+		w.WriteHeader(http.StatusServiceUnavailable)
 	case r.Method == http.MethodGet && r.URL.Path == "/carts/cart-1":
 		_, _ = w.Write([]byte(cartAnswer))
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/delivery-offers/"):
@@ -106,7 +116,7 @@ func (s *siblings) serve(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/payment-authorizations":
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write(authorizeAnswer(body))
-	case strings.HasSuffix(r.URL.Path, ":void"):
+	case strings.HasSuffix(r.URL.Path, "/voids"):
 		_, _ = w.Write([]byte(`{}`))
 	case r.URL.Path == "/checkout":
 		w.WriteHeader(status)

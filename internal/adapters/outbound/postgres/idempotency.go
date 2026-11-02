@@ -14,6 +14,8 @@ import (
 )
 
 // IdempotencyStore is the Postgres ports.IdempotencyStore over idempotency_keys.
+// The key is the primary key on its own (migration 0002): one Idempotency-Key
+// names one request fingerprint across every route of the service.
 type IdempotencyStore struct{ pool *pgxpool.Pool }
 
 var _ ports.IdempotencyStore = (*IdempotencyStore)(nil)
@@ -24,11 +26,11 @@ func NewIdempotencyStore(pool *pgxpool.Pool) *IdempotencyStore { return &Idempot
 func ttlSeconds() float64 { return idempotency.TTL.Seconds() }
 
 // Get implements ports.IdempotencyStore.
-func (s *IdempotencyStore) Get(ctx context.Context, route, key string) (idempotency.Record, error) {
+func (s *IdempotencyStore) Get(ctx context.Context, key string) (idempotency.Record, error) {
 	var rec idempotency.Record
 	err := queryFor(ctx, s.pool).QueryRow(ctx, `
 		SELECT request_hash, status, content_type, body, created_at FROM idempotency_keys
-		WHERE route = $1 AND key = $2 AND created_at > now() - make_interval(secs => $3)`, route, key, ttlSeconds()).
+		WHERE key = $1 AND created_at > now() - make_interval(secs => $2)`, key, ttlSeconds()).
 		Scan(&rec.RequestHash, &rec.Status, &rec.ContentType, &rec.Body, &rec.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return idempotency.Record{}, ports.ErrNotFound
@@ -42,7 +44,7 @@ func (s *IdempotencyStore) Get(ctx context.Context, route, key string) (idempote
 
 // Put implements ports.IdempotencyStore: it stores the record unless a fresh
 // one exists; an expired record is replaced.
-func (s *IdempotencyStore) Put(ctx context.Context, route, key string, rec idempotency.Record) (bool, error) {
+func (s *IdempotencyStore) Put(ctx context.Context, key string, rec idempotency.Record) (bool, error) {
 	created := rec.CreatedAt
 	if created.IsZero() {
 		created = time.Now().UTC()
@@ -54,11 +56,11 @@ func (s *IdempotencyStore) Put(ctx context.Context, route, key string, rec idemp
 	stored := false
 	err := inTx(ctx, s.pool, func(q querier) error {
 		tag, err := q.Exec(ctx, `
-			INSERT INTO idempotency_keys (route, key, request_hash, status, content_type, body, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)
-			ON CONFLICT (route, key) DO UPDATE SET request_hash = EXCLUDED.request_hash, status = EXCLUDED.status,
+			INSERT INTO idempotency_keys (key, request_hash, status, content_type, body, created_at) VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (key) DO UPDATE SET request_hash = EXCLUDED.request_hash, status = EXCLUDED.status,
 				content_type = EXCLUDED.content_type, body = EXCLUDED.body, created_at = EXCLUDED.created_at
-			WHERE idempotency_keys.created_at <= now() - make_interval(secs => $8)`,
-			route, key, rec.RequestHash, rec.Status, rec.ContentType, body, created.UTC(), ttlSeconds())
+			WHERE idempotency_keys.created_at <= now() - make_interval(secs => $7)`,
+			key, rec.RequestHash, rec.Status, rec.ContentType, body, created.UTC(), ttlSeconds())
 		stored = err == nil && tag.RowsAffected() == 1
 		return err
 	})

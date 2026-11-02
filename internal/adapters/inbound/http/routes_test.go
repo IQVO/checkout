@@ -68,7 +68,7 @@ func TestOpenOfferNotQuotableAndDependencies(t *testing.T) {
 func TestConfirmCompletesWith200(t *testing.T) {
 	e := newEnv(t)
 	e.open()
-	r := e.post("/checkout-sessions/sess-1:confirm", confirmBody)
+	r := e.post("/checkout-sessions/sess-1/confirmations", confirmBody)
 	e.wantStatus(r, http.StatusOK)
 	m := r.json(t)
 	if m["state"] != "COMPLETED" || m["orderId"] != "order-sess-1" || m["authorizationId"] == nil {
@@ -80,12 +80,12 @@ func TestConfirmAnswers202WhileTheOutcomeIsUnknown(t *testing.T) {
 	e := newEnv(t)
 	e.open()
 	e.placer.Script = []memory.PlaceStep{{Err: ports.ErrOrderingUnavailable}}
-	r := e.post("/checkout-sessions/sess-1:confirm", confirmBody)
+	r := e.post("/checkout-sessions/sess-1/confirmations", confirmBody)
 	e.wantStatus(r, http.StatusAccepted)
 	if r.json(t)["state"] != "PLACING" {
 		t.Fatalf("body %s", r.Body)
 	}
-	e.wantProblem(e.post("/checkout-sessions/sess-1:confirm", `{"paymentMethodToken":"tok_2"}`), http.StatusConflict, "placement-in-doubt")
+	e.wantProblem(e.post("/checkout-sessions/sess-1/confirmations", `{"paymentMethodToken":"tok_2"}`), http.StatusConflict, "placement-in-doubt")
 	e.wantStatus(e.get("/checkout-sessions/sess-1"), http.StatusOK)
 }
 
@@ -93,14 +93,14 @@ func TestConfirmDeclineAndRequoteBodies(t *testing.T) {
 	e := newEnv(t)
 	e.open()
 	e.payments.Script = []memory.AuthStep{{Result: exchange.Authorization{DeclineReason: "no"}}}
-	d := e.post("/checkout-sessions/sess-1:confirm", confirmBody)
+	d := e.post("/checkout-sessions/sess-1/confirmations", confirmBody)
 	e.wantStatus(d, http.StatusOK)
 	if d.json(t)["state"] != "DECLINED" {
 		t.Fatalf("body %s", d.Body)
 	}
 	e.placer.Script = []memory.PlaceStep{{Outcome: exchange.PlaceOutcome{Kind: exchange.OutcomeRequote, Offers: []cs.RequotedOffer{{
 		OfferID: "offer-9", GroupNo: 1, Tier: cs.TierSameDay, DeliverByEarliest: "2026-10-26", DeliverByLatest: "2026-10-27", ExpiresAt: t0.Add(time.Hour)}}}}}
-	r := e.post("/checkout-sessions/sess-1:confirm", confirmBody)
+	r := e.post("/checkout-sessions/sess-1/confirmations", confirmBody)
 	e.wantStatus(r, http.StatusOK)
 	m := r.json(t)
 	offers, _ := m["requotedOffers"].([]any)
@@ -111,20 +111,20 @@ func TestConfirmDeclineAndRequoteBodies(t *testing.T) {
 
 func TestConfirmErrors(t *testing.T) {
 	e := newEnv(t)
-	e.wantProblem(e.post("/checkout-sessions/nope:confirm", confirmBody), http.StatusNotFound, "not-found")
+	e.wantProblem(e.post("/checkout-sessions/nope/confirmations", confirmBody), http.StatusNotFound, "not-found")
 	e.open()
-	e.wantProblem(e.post("/checkout-sessions/sess-1:confirm", `{}`), http.StatusUnprocessableEntity, "validation-failed")
+	e.wantProblem(e.post("/checkout-sessions/sess-1/confirmations", `{}`), http.StatusUnprocessableEntity, "validation-failed")
 	e.clock.Advance(16 * time.Minute)
-	e.wantProblem(e.post("/checkout-sessions/sess-1:confirm", confirmBody), http.StatusUnprocessableEntity, "price-quote-expired")
+	e.wantProblem(e.post("/checkout-sessions/sess-1/confirmations", confirmBody), http.StatusUnprocessableEntity, "price-quote-expired")
 }
 
 func TestConfirmClosedAndMismatch(t *testing.T) {
 	e := newEnv(t)
 	e.open()
-	e.wantStatus(e.post("/checkout-sessions/sess-1:confirm", confirmBody), http.StatusOK)
-	e.wantProblem(e.post("/checkout-sessions/sess-1:confirm", confirmBody), http.StatusConflict, "session-closed")
+	e.wantStatus(e.post("/checkout-sessions/sess-1/confirmations", confirmBody), http.StatusOK)
+	e.wantProblem(e.post("/checkout-sessions/sess-1/confirmations", confirmBody), http.StatusConflict, "session-closed")
 	e2 := newEnv(t)
 	e2.open()
 	e2.payments.Script = []memory.AuthStep{{Mutate: func(a *exchange.Authorization) { a.TotalMinor++ }}}
-	e2.wantProblem(e2.post("/checkout-sessions/sess-1:confirm", confirmBody), http.StatusConflict, "authorization-mismatch")
+	e2.wantProblem(e2.post("/checkout-sessions/sess-1/confirmations", confirmBody), http.StatusConflict, "authorization-mismatch")
 }

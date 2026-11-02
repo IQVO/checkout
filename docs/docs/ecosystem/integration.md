@@ -21,7 +21,7 @@ flowchart LR
   ck -->|"GET /carts/cartId"| sc["shopping-cart"]
   ck -->|"GET /delivery-offers/offerId"| dp["delivery-promise"]
   ck -->|"POST /price-quotes"| pr["pricing"]
-  ck -->|"POST /payment-authorizations<br/>and :void"| cp["customer-payments"]
+  ck -->|"POST /payment-authorizations<br/>and .../voids"| cp["customer-payments"]
   ck -->|"POST /checkout via ACL"| co["customer-ordering"]
   ck ==>|"CheckoutCompleted"| sc
   ck ==>|"CheckoutCompleted"| cp
@@ -46,7 +46,7 @@ retrying is the job of the saga policies.
 | **shopping-cart** | `GET /carts/{cartId}`: cart state, destination postal prefix, lines, delivery quote groups with their offers, selections, `checkoutReadiness`, `version` | none | 404 is `validation-failed` (422); any other non-2xx, a timeout or an undecodable body is `shopping-cart-unavailable` (503) and nothing is stored. The cart is ready only when its own readiness is true AND its state is `OPEN`. |
 | **delivery-promise** (network OHS) | `GET /delivery-offers/{offerId}` for each selected offer: `state` and `expiresAt` | none | 404 means "not quotable" (`offer-not-quotable`, 422); other failures are `delivery-promise-unavailable` (503). Used only at open (decision H3); a failure changes no state. |
 | **pricing** | `POST /price-quotes` with the cart id, destination prefix, numbered lines and groups (`groupNo`, `offerId`, `tier`, `lineNos`) | `<Idempotency-Key>:price-quote` | 4xx is `price-quote-rejected` (422); transport error, timeout, 5xx or an undecodable body is `pricing-unavailable` (503). The same open retried gets the same quote. |
-| **customer-payments** | `POST /payment-authorizations` (session id, token, currency, total, allocations per group); `POST /payment-authorizations/{id}:void` | `<sessionId>:auth:<attempt>`; `<sessionId>:void` | Authorize: 201 `AUTHORIZED` is an authorization; 201 with any other state, or a 422, is a decline; transport error, timeout, 409 or 5xx leave the session `AUTHORIZING` for `ResolveStuckAuthorizations`. Void: 200, 404 and a 409 `illegal-transition` count as done; anything else leaves the debt on the session for `RetryOwedVoids`. |
+| **customer-payments** | `POST /payment-authorizations` (session id, token, currency, total, allocations per group); `POST /payment-authorizations/{id}/voids` | `<sessionId>:auth:<attempt>`; `<sessionId>:void` | Authorize: 201 `AUTHORIZED` is an authorization; 201 with any other state, or a 422, is a decline; transport error, timeout, 409 or 5xx leave the session `AUTHORIZING` for `ResolveStuckAuthorizations`. Void: 200, 404 and a 409 `illegal-transition` count as done; anything else leaves the debt on the session for `RetryOwedVoids`. |
 | **customer-ordering** (network OHS, behind the ACL) | `POST /checkout` with `shopperId`, `shipToAddressId`, numbered lines and the groups' `{groupNo, offerId, lineNos}` | the sessionId | See the table below. The body is rendered once, stored on the session and replayed byte for byte. |
 
 ### Place-order outcome mapping

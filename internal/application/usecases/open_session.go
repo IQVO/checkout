@@ -2,6 +2,8 @@ package usecases
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 
 	"github.com/IQVO/checkout/internal/application/exchange"
@@ -36,7 +38,7 @@ func (u OpenSession) Execute(ctx context.Context, cmd OpenCommand) (views.Sessio
 	if err != nil {
 		return views.Session{}, err
 	}
-	quote, err := u.Quoter.IssueQuote(ctx, cmd.RequestKey+":price-quote", quoteRequest(cart))
+	quote, err := u.Quoter.IssueQuote(ctx, priceQuoteKey(cmd.RequestKey), quoteRequest(cart))
 	if err != nil {
 		return views.Session{}, err
 	}
@@ -59,6 +61,22 @@ func (u OpenSession) Execute(ctx context.Context, cmd OpenCommand) (views.Sessio
 		return views.Session{}, err
 	}
 	return views.Of(s), nil
+}
+
+// maxDownstreamKeyLength is the Idempotency-Key bound every sibling enforces.
+const maxDownstreamKeyLength = 128
+
+// priceQuoteKey derives the key of the pricing call from the request key, so a
+// retry of the same open gets the same quote. A request key near the 128
+// character bound would overflow it once suffixed (the sibling answers 400
+// idempotency-key-invalid), so such a key is replaced by its SHA-256 hex.
+func priceQuoteKey(requestKey string) string {
+	const suffix = ":price-quote"
+	if len(requestKey)+len(suffix) <= maxDownstreamKeyLength {
+		return requestKey + suffix
+	}
+	sum := sha256.Sum256([]byte(requestKey))
+	return hex.EncodeToString(sum[:]) + suffix
 }
 
 func (u OpenSession) offerStatuses(ctx context.Context, groups []checkoutsession.CartGroup) ([]checkoutsession.OfferStatus, error) {

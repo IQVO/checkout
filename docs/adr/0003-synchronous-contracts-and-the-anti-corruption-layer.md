@@ -20,7 +20,7 @@ another context is imported.
 | GetDeliveryOffer | delivery-promise | `GET /delivery-offers/{offerId}` | n/a | `adapters/outbound/deliverypromise` |
 | IssuePriceQuote | pricing | `POST /price-quotes` | `<requestKey>:price-quote` | `adapters/outbound/pricing` |
 | AuthorizePayment | customer-payments | `POST /payment-authorizations` | `<sessionId>:auth:<attempt>` (H2) | `adapters/outbound/customerpayments` |
-| VoidAuthorization | customer-payments | `POST /payment-authorizations/{id}:void` | `<sessionId>:void` | `adapters/outbound/customerpayments` |
+| VoidAuthorization | customer-payments | `POST /payment-authorizations/{id}/voids` | `<sessionId>:void` | `adapters/outbound/customerpayments` |
 | PlaceOrder | customer-ordering | `POST /checkout` | `<sessionId>` | `adapters/outbound/customerordering` (the ACL) |
 
 - **The ACL** (`internal/adapters/outbound/customerordering`) is the only place that

@@ -56,7 +56,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 	respond(w, r, http.StatusOK, v, err)
 }
 
-// handleConfirm serves POST /checkout-sessions/{sessionId}:confirm
+// handleConfirm serves POST /checkout-sessions/{sessionId}/confirmations
 // (ConfirmSession). 200 when the session reached a definitive state, 202 while
 // the authorization or the place-order outcome is unknown.
 func (s *Server) handleConfirm(w http.ResponseWriter, r *http.Request) {

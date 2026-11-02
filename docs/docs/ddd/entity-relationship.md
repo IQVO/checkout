@@ -7,7 +7,7 @@ description: "The Postgres schema of Checkout: the three tables of its migration
 
 # Entity Relationship
 
-The schema is [`0001_checkout_schema.up.sql`](https://github.com/IQVO/checkout/blob/develop/internal/adapters/outbound/postgres/migrations/0001_checkout_schema.up.sql), applied at boot by `cmd/api` with golang-migrate (which adds its own `schema_migrations` table; `MIGRATIONS_DATABASE_URL` overrides the connection used for it). Checkout owns its database and shares no table with another context.
+The schema is [`0001_checkout_schema.up.sql`](https://github.com/IQVO/checkout/blob/develop/internal/adapters/outbound/postgres/migrations/0001_checkout_schema.up.sql) plus `0002_idempotency_key_global.up.sql` (the `Idempotency-Key` alone becomes the primary key of `idempotency_keys`), applied at boot by `cmd/api` with golang-migrate (which adds its own `schema_migrations` table; `MIGRATIONS_DATABASE_URL` overrides the connection used for it). Checkout owns its database and shares no table with another context.
 
 Three tables. Key markers: PK primary key, UK unique. Types are the column types of the migration; constraints (CHECK, defaults, partial indexes) are in the file. There is no foreign key: the aggregate is one row, and the infrastructure tables are keyed by their own ids.
 
@@ -47,7 +47,6 @@ erDiagram
         bigint version
     }
     idempotency_keys {
-        text route PK
         text key PK
         text request_hash
         integer status
@@ -72,14 +71,14 @@ erDiagram
     }
 ```
 
-Source: `internal/adapters/outbound/postgres/migrations/0001_checkout_schema.up.sql`.
+Source: `internal/adapters/outbound/postgres/migrations/0001_checkout_schema.up.sql` and `0002_idempotency_key_global.up.sql`.
 
 ## Tables
 
 | Table | Columns | Primary key | Role |
 | --- | --- | --- | --- |
 | `checkout_sessions` | 31 | `session_id` | the `CheckoutSession` aggregate, one row per session |
-| `idempotency_keys` | 7 | `route, key` | stored REST answers per `Idempotency-Key` and route |
+| `idempotency_keys` | 6 | `key` | stored REST answers per `Idempotency-Key` (global to the service; the row keeps the request fingerprint) |
 | `outbox_events` | 13 | `id` | transactional outbox the relay publishes to Kafka |
 
 ## How the aggregate maps onto `checkout_sessions`

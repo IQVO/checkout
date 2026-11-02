@@ -158,7 +158,7 @@ Content-Type: application/json
 Confirm it with a payment method token (never a card number):
 
 ```bash
-curl -si -X POST 'localhost:18080/checkout-sessions/sess-3b5fcbd5535a:confirm' \
+curl -si -X POST 'localhost:18080/checkout-sessions/sess-3b5fcbd5535a/confirmations' \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: demo-confirm-1' \
   -d '{"paymentMethodToken":"tok-visa-demo"}'
 ```
@@ -178,8 +178,8 @@ Content-Type: application/json
 | --- | --- |
 | `POST /checkout-sessions` without `Idempotency-Key` | `400` `/problems/idempotency-key-required` |
 | `POST /checkout-sessions` for `cart-unready` | `409` `/problems/cart-not-checkout-ready` |
-| the same confirm again with the same key | `200`, same body, header `Idempotent-Replayed: true` |
-| the same key with another token | `422` `/problems/idempotency-key-reused` |
+| the same confirm again with the same key | `200`, same body, header `Idempotency-Replayed: true` |
+| the same key with another token | `409` `/problems/idempotency-key-reused` |
 | a new key on the `COMPLETED` session | `409` `/problems/session-closed` |
 | `GET /checkout-sessions/sess-nope` | `404` `/problems/not-found` |
 | confirm with a token starting `tok-declined` | `200`, `"state":"DECLINED"`; the session stays open for another token |
@@ -228,7 +228,7 @@ docker exec co-pg psql -U postgres -d checkout -At \
 
 `attempts` 1 with `published_at` set means the relay delivered the row. The
 public schema holds `checkout_sessions`, `idempotency_keys`, `outbox_events`
-and `schema_migrations` (version 1, not dirty).
+and `schema_migrations` (version 2, not dirty).
 
 ## The MCP server
 

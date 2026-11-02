@@ -14,7 +14,7 @@ func registerWhens(sc *godog.ScenarioContext, w *world) {
 	sc.Step(`^I open a checkout session$`, func() error { return w.openFor("cart-1") })
 	sc.Step(`^I open a checkout session for cart "([^"]*)"$`, w.openFor)
 	sc.Step(`^I confirm the session with token "([^"]*)"$`, func(token string) error {
-		return w.post("/checkout-sessions/sess-1:confirm", fmt.Sprintf(`{"paymentMethodToken":%q}`, token))
+		return w.post("/checkout-sessions/sess-1/confirmations", fmt.Sprintf(`{"paymentMethodToken":%q}`, token))
 	})
 	sc.Step(`^I read the session$`, func() error { return w.get("/checkout-sessions/sess-1") })
 	sc.Step(`^I read the session "([^"]*)"$`, func(id string) error { return w.get("/checkout-sessions/" + id) })

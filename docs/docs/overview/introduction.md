@@ -86,7 +86,7 @@ Packaged as a `Dockerfile` that builds every `cmd/*` and the Helm chart
 2. **Confirm it** with a payment-method token: authorize the exact quote total
    with an allocation per shipment group, store the PII-free placement request,
    place the order, and settle the answer
-   (`POST /checkout-sessions/{sessionId}:confirm`).
+   (`POST /checkout-sessions/{sessionId}/confirmations`).
 3. **Settle every outcome**: `COMPLETED` with the order id; a decline that keeps
    the session open for another token; `REQUOTE_REQUIRED` with the network's
    re-quoted offers; `FAILED` for a rejected request; `PLACING` (HTTP 202) when
@@ -119,3 +119,7 @@ Packaged as a `Dockerfile` that builds every `cmd/*` and the Helm chart
 | Read the decisions | [ADR index](/docs/adr) |
 
 Published at [https://iqvo.github.io/checkout/](https://iqvo.github.io/checkout/).
+
+:::note[Disclaimer]
+This project is a domain-driven design study. It is not associated with, endorsed by or affiliated with any company, and it uses no company's code, data, logos or trademarks. All names, figures and examples are illustrative or synthetic.
+:::

@@ -140,6 +140,7 @@ components:
               amountMinor: 735
             completedAt: '2026-10-25T14:20:00Z'
     CheckoutOpened:
+      x-no-consumer-reason: analytics-only stream (decision H7); no fleet service consumes it
       name: CheckoutOpened
       title: A checkout session was opened.
       summary: A checkout session was opened.
@@ -169,6 +170,7 @@ components:
             totalMinor: 2100
             openedAt: '2026-10-25T14:03:11Z'
     CheckoutDeclined:
+      x-no-consumer-reason: analytics-only stream (decision H7); no fleet service consumes it
       name: CheckoutDeclined
       title: The payment authorization was declined.
       summary: The payment authorization was declined.
@@ -197,6 +199,7 @@ components:
             reason: insufficient-funds
             at: '2026-10-25T14:04:00Z'
     CheckoutRequoteRequired:
+      x-no-consumer-reason: analytics-only stream (decision H7); no fleet service consumes it
       name: CheckoutRequoteRequired
       title: The network re-quoted the offers; the session needs a requote.
       summary: The network re-quoted the offers; the session needs a requote.
@@ -231,6 +234,7 @@ components:
               expiresAt: '2026-10-25T15:05:00Z'
             at: '2026-10-25T14:05:00Z'
     CheckoutFailed:
+      x-no-consumer-reason: analytics-only stream (decision H7); no fleet service consumes it
       name: CheckoutFailed
       title: The session failed.
       summary: The session failed.
@@ -259,6 +263,7 @@ components:
             code: place-order-rejected
             at: '2026-10-25T14:05:00Z'
     CheckoutSessionExpired:
+      x-no-consumer-reason: analytics-only stream (decision H7); no fleet service consumes it
       name: CheckoutSessionExpired
       title: An open or declined session expired with its price quote.
       summary: An open or declined session expired with its price quote.
@@ -285,6 +290,7 @@ components:
             sessionId: sess-9001
             at: '2026-10-25T14:18:00Z'
     CheckoutPlacementInDoubt:
+      x-no-consumer-reason: analytics-only stream (decision H7); no fleet service consumes it
       name: CheckoutPlacementInDoubt
       title: The place-order outcome is unknown.
       summary: The place-order outcome is unknown.

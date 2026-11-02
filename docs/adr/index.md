@@ -22,3 +22,4 @@ immutable; a changed decision gets a new ADR that supersedes the old one. The
 | [0006](/docs/adr/0006-fleet-observability-standard) | Adopt the fleet observability standard (logs, metrics, traces) | Accepted (2026-10-26). |
 | [0007](/docs/adr/0007-a2a-inbound-adapter) | A2A inbound adapter | Accepted (2026-10-30). |
 | [0008](/docs/adr/0008-requoted-dates-in-the-destination-time-zone) | Requoted delivery dates in the destination's time zone | Accepted (2026-10-30). |
+| [0009](/docs/adr/0009-adopt-the-fleet-rest-api-guideline) | Adopt the fleet REST API guideline | Accepted (2026-11-01). |

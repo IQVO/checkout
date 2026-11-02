@@ -70,6 +70,7 @@ func eventually(t *testing.T, within time.Duration, what string, cond func() boo
 type reply struct {
 	status int
 	body   string
+	header http.Header
 }
 
 func (s *service) call(t *testing.T, method, path, key, body string) reply {
@@ -87,7 +88,7 @@ func (s *service) call(t *testing.T, method, path, key, body string) reply {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	b, _ := io.ReadAll(resp.Body)
-	return reply{status: resp.StatusCode, body: string(b)}
+	return reply{status: resp.StatusCode, body: string(b), header: resp.Header}
 }
 
 func (r reply) json(t *testing.T) map[string]any {

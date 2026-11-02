@@ -18,12 +18,6 @@ import (
 	"github.com/IQVO/checkout/internal/application/usecases"
 )
 
-// Route names under which the Idempotency-Key records are stored.
-const (
-	routeOpen    = "POST /checkout-sessions"
-	routeConfirm = "POST /checkout-sessions/{sessionId}:confirm"
-)
-
 // Server holds the use cases the handlers call.
 type Server struct {
 	OpenSession    usecases.OpenSession
@@ -69,12 +63,11 @@ func NewRouter(s *Server, logger *slog.Logger, serviceName string) http.Handler 
 	r.Get("/healthz", handleHealthz)
 	r.Get("/readyz", s.handleReadyz)
 
-	r.With(s.idempotent(routeOpen)).Post("/checkout-sessions", s.handleOpen)
+	// One middleware for every POST: the Idempotency-Key is global to the
+	// service, so the routes share its key locks.
+	idem := RequireIdempotencyKey(s.IdempotencyStore, s.Clock)
+	r.With(idem).Post("/checkout-sessions", s.handleOpen)
 	r.Get("/checkout-sessions/{sessionId}", s.handleGet)
-	r.With(s.idempotent(routeConfirm)).Post("/checkout-sessions/{sessionId}:confirm", s.handleConfirm)
+	r.With(idem).Post("/checkout-sessions/{sessionId}/confirmations", s.handleConfirm)
 	return r
-}
-
-func (s *Server) idempotent(route string) func(http.Handler) http.Handler {
-	return RequireIdempotencyKey(s.IdempotencyStore, s.Clock, route)
 }

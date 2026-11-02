@@ -11,7 +11,7 @@ A definitive 409 from customer-ordering's `POST /checkout` (`offer-not-quotable`
 window as two instants (`deliverByEarliest`, `deliverByLatest`). The anti-corruption layer
 (`internal/adapters/outbound/customerordering/gateway.go`) turns them into calendar dates
 (`cs.RequotedOffer`) that checkout returns on the session, publishes on
-`CheckoutRequoteRequired` and posts to shopping-cart `/carts/{id}/delivery/requoted`.
+`CheckoutRequoteRequired` and posts to shopping-cart `/carts/{id}/delivery-requote-acceptances`.
 
 It formatted both instants in UTC. A shopper reads a window as days of the DESTINATION's
 calendar: a Saturday 09:00-21:00 window in Chicago is `2026-10-31T14:00:00Z` ..
