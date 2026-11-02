@@ -1,1 +1,1 @@
-{"parameters":[{"name":"sessionId","in":"path","required":true,"schema":{"type":"string"}}]}
+{"parameters":[{"name":"sessionId","in":"path","required":true,"description":"A longer identifier than 128 characters is 404, like an unknown one.","schema":{"type":"string","maxLength":128}}]}
