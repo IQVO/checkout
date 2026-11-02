@@ -30,6 +30,10 @@ const skillCheckoutSessionStatus = "checkout_session_status"
 // cannot name a session is a miss, never a server error.
 const maxSessionIDLength = 128
 
+// modeJSON is the one content type this agent both accepts and answers in; it
+// appears on the Agent Card's default and per-skill input/output modes.
+const modeJSON = "application/json"
+
 // skillRequest is the wire contract of every skill call: the first meaningful
 // message part carries (as a Data part, or a Text part holding the same JSON)
 // the skill id and its arguments. Strict on purpose: an agent client is
