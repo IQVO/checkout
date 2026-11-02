@@ -28,9 +28,15 @@ info:
     model. Every POST takes an Idempotency-Key header (1-128 printable ASCII
     characters): a missing or malformed key is 400 idempotency-key-required /
     idempotency-key-invalid, a repeat of the same method, path and body replays
-    the stored answer with the response header Idempotency-Replayed: true, and
-    the same key on a different request is 409 idempotency-key-reused. No
-    authentication.
+    the stored answer (any status below 500, errors included; a 5xx is never
+    stored, so the key can retry the real work) for 24 hours with the response
+    header Idempotency-Replayed: true, and the same key on a different request
+    is 409 idempotency-key-reused. The Idempotency-Key is global to the service,
+    not per route. A request body over 64 KiB, malformed JSON, an unknown field
+    or a NUL character (U+0000) in the query string or body is 400
+    malformed-request; a NUL in the path, or a path identifier longer than 128
+    characters, is 404. Every error body carries type, title, status, detail
+    and instance. No authentication.
 servers:
   - url: http://localhost:8080
 tags:
@@ -75,13 +81,17 @@ paths:
             cart-not-checkout-ready (ErrCartNotCheckoutReady), concurrent-update,
             or idempotency-key-reused (the Idempotency-Key was already used with
             a different request).
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
           content:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
           description: >-
-            validation-failed (a missing reference or an unknown cart) or
+            validation-failed (a missing reference or an unknown cart),
+            price-quote-rejected (pricing refused the quote request) or
             offer-not-quotable (ErrOfferNotQuotable, decision H3: a selected
             offer is no longer QUOTED or expires within 2 minutes; no state
             changes, the BFF refreshes the cart's delivery quote).
@@ -99,11 +109,13 @@ paths:
           description: >-
             A dependency is unreachable (shopping-cart-unavailable,
             delivery-promise-unavailable or pricing-unavailable); retry with the
-            same Idempotency-Key.
+            same Idempotency-Key. Never stored for replay.
           content:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /checkout-sessions/{sessionId}:
     get:
       tags: [CheckoutSessions]
@@ -121,8 +133,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CheckoutSession'
+        '400':
+          description: malformed-request (a NUL character in the query string).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /checkout-sessions/{sessionId}/confirmations:
     post:
       tags: [CheckoutSessions]
@@ -188,6 +208,9 @@ paths:
             (a confirm while AUTHORIZING), concurrent-update, or
             idempotency-key-reused (the Idempotency-Key was already used with a
             different request).
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
           content:
             application/problem+json:
               schema:
@@ -196,10 +219,15 @@ paths:
           description: >-
             validation-failed (a missing token) or price-quote-expired
             (ErrPriceQuoteExpired, contracts-delta S2: open a new session).
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
           content:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   parameters:
     IdempotencyKey:
@@ -219,8 +247,10 @@ components:
       name: sessionId
       in: path
       required: true
+      description: A longer identifier than 128 characters is 404, like an unknown one.
       schema:
         type: string
+        maxLength: 128
   headers:
     IdempotencyReplayed:
       description: >-
@@ -233,8 +263,12 @@ components:
   responses:
     BadRequest:
       description: >-
-        malformed-request, idempotency-key-required (no Idempotency-Key header)
-        or idempotency-key-invalid (not 1-128 printable ASCII characters).
+        malformed-request (bad or empty JSON, unknown field, trailing data, a
+        body over 64 KiB, a NUL character in the query string or body),
+        idempotency-key-required (no Idempotency-Key header) or
+        idempotency-key-invalid (not 1-128 printable ASCII characters). A
+        malformed-request answer is stored under its key and replayed with
+        Idempotency-Replayed: true.
       content:
         application/problem+json:
           schema:
@@ -245,13 +279,27 @@ components:
                 type: /problems/idempotency-key-required
                 title: Idempotency-Key header is required
                 status: 400
+                detail: send an Idempotency-Key header of 1 to 128 printable ASCII characters, unique per logical request
+                instance: /checkout-sessions
             idempotencyKeyInvalid:
               value:
                 type: /problems/idempotency-key-invalid
                 title: Idempotency-Key header is not valid
                 status: 400
+                detail: the Idempotency-Key must be 1 to 128 printable ASCII characters
+                instance: /checkout-sessions
     NotFound:
-      description: not-found.
+      description: >-
+        not-found (unknown session) or resource-not-found (a NUL character in
+        the path); an identifier longer than 128 characters is not-found.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InternalError:
+      description: >-
+        internal-error. The detail is always "an unexpected error occurred"; a
+        5xx is never stored under the Idempotency-Key.
       content:
         application/problem+json:
           schema:
@@ -260,12 +308,12 @@ components:
     Problem:
       type: object
       description: RFC 9457 problem details.
-      required: [type, title, status]
+      required: [type, title, status, detail, instance]
       properties:
         type:
           type: string
           format: uri-reference
-          description: Problem type slug, for example placement-in-doubt.
+          description: /problems/<slug>, for example /problems/placement-in-doubt.
         title:
           type: string
         status:
@@ -277,6 +325,7 @@ components:
         instance:
           type: string
           format: uri-reference
+          description: The escaped request path.
     Tier:
       type: string
       enum: [SAME_DAY, NEXT_DAY, TWO_DAY, STANDARD]
@@ -363,7 +412,7 @@ components:
           format: date-time
     CheckoutSession:
       type: object
-      required: [sessionId, state, cartId, cartVersion, shopperId, shipToAddressId, lines, groups, quoteExpiresAt, version]
+      required: [sessionId, state, cartId, cartVersion, shopperId, shipToAddressId, lines, groups, priceQuoteId, currency, totalMinor, quoteExpiresAt, authorizationId, orderId, failureCode, version]
       properties:
         sessionId:
           type: string
@@ -373,6 +422,7 @@ components:
           type: string
         cartVersion:
           type: integer
+          format: int64
           minimum: 1
         shopperId:
           type: string
@@ -401,19 +451,21 @@ components:
         authorizationId:
           type: string
           nullable: true
+          description: Always present; null until an authorization is recorded.
         orderId:
           type: string
           nullable: true
-          description: Set when the network's place-order step succeeds (COMPLETED).
+          description: Always present; null until the network's place-order step succeeds (COMPLETED).
         requotedOffers:
           type: array
-          description: Present in REQUOTE_REQUIRED; the BFF writes them into the cart as a new quote.
+          description: Present only in REQUOTE_REQUIRED (omitted otherwise); the BFF writes them into the cart as a new quote.
           items:
             $ref: '#/components/schemas/RequotedOffer'
         failureCode:
           type: string
           nullable: true
-          description: Present in FAILED.
+          description: Always present; null unless FAILED.
         version:
           type: integer
+          format: int64
           minimum: 1
