@@ -64,35 +64,32 @@ func mustEvents(t *testing.T) []shared.Event {
 }
 
 func testIdempotency(t *testing.T, e Env) {
-	_, err := e.Idempotency.Get(bg(), "POST /checkout-sessions", "k1")
+	_, err := e.Idempotency.Get(bg(), "k1")
 	wantErr(t, err, ports.ErrNotFound)
 	rec := idempotency.Record{RequestHash: "h1", Status: 201, ContentType: "application/json", Body: []byte(`{"a":1}`), CreatedAt: e.Clock.Now().UTC()}
-	stored, err := e.Idempotency.Put(bg(), "POST /checkout-sessions", "k1", rec)
+	stored, err := e.Idempotency.Put(bg(), "k1", rec)
 	must(t, err)
 	if !stored {
 		t.Fatal("the first Put must store")
 	}
-	stored, err = e.Idempotency.Put(bg(), "POST /checkout-sessions", "k1", idempotency.Record{RequestHash: "h2", Status: 500, CreatedAt: e.Clock.Now().UTC()})
+	stored, err = e.Idempotency.Put(bg(), "k1", idempotency.Record{RequestHash: "h2", Status: 500, CreatedAt: e.Clock.Now().UTC()})
 	must(t, err)
 	if stored {
 		t.Fatal("a second Put must not overwrite")
 	}
-	got, err := e.Idempotency.Get(bg(), "POST /checkout-sessions", "k1")
+	got, err := e.Idempotency.Get(bg(), "k1")
 	must(t, err)
 	if got.RequestHash != "h1" || got.Status != 201 || got.ContentType != "application/json" || string(got.Body) != `{"a":1}` {
 		t.Fatalf("stored record = %+v", got)
 	}
-	if _, err := e.Idempotency.Get(bg(), "POST /checkout-sessions/{sessionId}:confirm", "k1"); !errors.Is(err, ports.ErrNotFound) {
-		t.Fatalf("the route is part of the key: %v", err)
-	}
 	old := idempotency.Record{RequestHash: "old", Status: 200, CreatedAt: e.Clock.Now().UTC().Add(-idempotency.TTL - time.Minute)}
-	if _, err := e.Idempotency.Put(bg(), "POST /checkout-sessions/{sessionId}:confirm", "k-old", old); err != nil {
+	if _, err := e.Idempotency.Put(bg(), "k-old", old); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Idempotency.Get(bg(), "POST /checkout-sessions/{sessionId}:confirm", "k-old"); !errors.Is(err, ports.ErrNotFound) {
+	if _, err := e.Idempotency.Get(bg(), "k-old"); !errors.Is(err, ports.ErrNotFound) {
 		t.Fatalf("an expired record must read as absent: %v", err)
 	}
-	replaced, err := e.Idempotency.Put(bg(), "POST /checkout-sessions/{sessionId}:confirm", "k-old", idempotency.Record{RequestHash: "new", Status: 201, CreatedAt: e.Clock.Now().UTC()})
+	replaced, err := e.Idempotency.Put(bg(), "k-old", idempotency.Record{RequestHash: "new", Status: 201, CreatedAt: e.Clock.Now().UTC()})
 	must(t, err)
 	if !replaced {
 		t.Fatal("an expired record is replaceable")

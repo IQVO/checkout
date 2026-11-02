@@ -136,7 +136,7 @@ customer-payments each have a `checkoutConsumerGroup` in warehouse-infra
 
 | Store | Used by | Content |
 | --- | --- | --- |
-| **Postgres** (database `checkout`, Secret `checkout-db` in the cluster) | all three binaries | table `checkout_sessions` (the aggregate: scalar columns plus `lines`, `groups`, `requoted_offers` as `jsonb`, the stored placement request `placement_body` / `placement_hash`, the owed void, `version` for optimistic concurrency), `idempotency_keys` (route, key, request hash, stored response), `outbox_events` (the transactional outbox). One embedded migration, `0001_checkout_schema`. Pool of at most 10 connections, `statement_timeout = 5s`. |
+| **Postgres** (database `checkout`, Secret `checkout-db` in the cluster) | all three binaries | table `checkout_sessions` (the aggregate: scalar columns plus `lines`, `groups`, `requoted_offers` as `jsonb`, the stored placement request `placement_body` / `placement_hash`, the owed void, `version` for optimistic concurrency), `idempotency_keys` (key, request hash, stored response), `outbox_events` (the transactional outbox). Two embedded migrations, `0001_checkout_schema` and `0002_idempotency_key_global`. Pool of at most 10 connections, `statement_timeout = 5s`. |
 | **Kafka** (one broker platform-wide, `localhost:9092` from the kind cluster) | `cmd/api` only | produces `retailnetwork.checkout.events` and `retailnetwork.checkout.analytics`; consumes nothing |
 
 See the [Entity relationship](/docs/ddd/entity-relationship) page for the

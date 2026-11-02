@@ -86,7 +86,7 @@ func registerAssertions(sc *godog.ScenarioContext, w *world) {
 	})
 	sc.Step(`^the response field "([^"]*)" is (\S+)$`, w.fieldIs)
 	sc.Step(`^the answer is a replay$`, func() error {
-		if w.header.Get("Idempotent-Replayed") != "true" {
+		if w.header.Get("Idempotency-Replayed") != "true" {
 			return fmt.Errorf("the answer is not a replay: %v", w.header)
 		}
 		return nil

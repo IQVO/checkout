@@ -189,15 +189,21 @@ Collector telemetry is dropped. Environment: `OTEL_SERVICE_NAME` (`checkout`,
 Contract: [`apis/openapi.yaml`](apis/openapi.yaml). No authentication. Errors
 are RFC 9457 problem details (`application/problem+json`) whose `type` is
 `/problems/<slug>`; shared slugs are declared once in `components`. Every
-write takes an `Idempotency-Key` header — a retry with the same key replays
-the stored placement request byte for byte (alert at 20 h, give up and void at
-22 h, inside the network's 24 h idempotency window).
+`POST` takes an `Idempotency-Key` header (1-128 printable ASCII characters, a
+UUID per logical submit; global to the service, not per route). A retry with
+the same key, method, path and body replays the stored answer with
+`Idempotency-Replayed: true`; the same key with another request is
+`409 idempotency-key-reused`, an absent or malformed key is `400`
+`idempotency-key-required` / `idempotency-key-invalid`
+([ADR 0009](docs/adr/0009-adopt-the-fleet-rest-api-guideline.md)). A retry of a
+confirm also replays the stored placement request byte for byte (alert at 20 h,
+give up and void at 22 h, inside the network's 24 h idempotency window).
 
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/checkout-sessions` | Open a checkout session for a cart |
 | `GET` | `/checkout-sessions/{sessionId}` | Get a checkout session |
-| `POST` | `/checkout-sessions/{sessionId}:confirm` | Confirm the session with a payment method token |
+| `POST` | `/checkout-sessions/{sessionId}/confirmations` | Confirm the session with a payment method token |
 | `GET` | `/healthz` | Liveness |
 | `GET` | `/readyz` | Readiness (Postgres ping + Kafka metadata) |
 
