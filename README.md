@@ -14,18 +14,25 @@ This project is a domain-driven design study. It is not associated with, endorse
 
 ## Documentation
 
-This repo has no docs site of its own. The context's design lives in
-[warehouse-docs](https://iqvo.github.io/warehouse-docs/storefront/) — `storefront/model/model.yaml` there is the single source of truth.
+The documentation site of this repository is published at
+**[https://iqvo.github.io/checkout/](https://iqvo.github.io/checkout/)**. It is built from `docs/`
+(Docusaurus) by `.github/workflows/docs.yml`: pull requests build it, pushes to `main` deploy it. The
+pages are written from the code; where a page and the code disagree, the code wins. The storefront-wide
+design (all six storefront contexts, the event standard, the model gap register) lives in
+[warehouse-docs](https://iqvo.github.io/warehouse-docs/storefront/).
 
-Page map:
+Page map (source files are under `docs/docs/`):
 
 | Area | Pages |
 |---|---|
-| Context pack | [Checkout context page](https://iqvo.github.io/warehouse-docs/storefront/contexts/checkout) and its 13-page ddd-crew pack (business context, ubiquitous language, core-domain chart, bounded-context canvas, context map, aggregate canvas, domain events, message flow, eventstorming, use cases, class/sequence/ER diagrams) |
-| Strategic design | [Storefront strategic design](https://iqvo.github.io/warehouse-docs/storefront/strategic-design/) — subdomain classification, context map, CloudEvents event standard, model gap register |
-| API reference | [REST reference generated from `apis/openapi.yaml`](https://iqvo.github.io/warehouse-docs/storefront/api-reference/rest/checkout/) |
-| Decisions | [Storefront ADR index](https://iqvo.github.io/warehouse-docs/storefront/adr/) |
-| In this repo | [`docs/adr/`](docs/adr/) (the repo's own ADRs), [`docs/operations/runbook.md`](docs/operations/runbook.md), [`docs/before-first-release.md`](docs/before-first-release.md) |
+| Overview | [Introduction](https://iqvo.github.io/checkout/docs/overview/introduction) (what the context owns and does not own), [Architecture](https://iqvo.github.io/checkout/docs/overview/architecture) (layers, binaries, data stores), [Quickstart](https://iqvo.github.io/checkout/docs/overview/quickstart) (run it locally and make the first calls) |
+| Operations | [Configuration](https://iqvo.github.io/checkout/docs/operations/configuration) (every environment variable per binary), [Runbook](https://iqvo.github.io/checkout/docs/operations/runbook) (deployment, probes, migrations, outbox relay, sweepers), [Observability](https://iqvo.github.io/checkout/docs/operations/observability) (metrics, spans, logs), [Troubleshooting](https://iqvo.github.io/checkout/docs/operations/troubleshooting) (symptom, cause, check, fix), [Before first release](https://iqvo.github.io/checkout/docs/operations/before-first-release) |
+| Development | [Testing](https://iqvo.github.io/checkout/docs/development/testing) (unit, integration, godog, contract, mutation, fitness tests and the CI jobs) |
+| Domain-driven design | [Ubiquitous language](https://iqvo.github.io/checkout/docs/ddd/ubiquitous-language), [Use cases](https://iqvo.github.io/checkout/docs/ddd/use-cases), [Subdomain classification](https://iqvo.github.io/checkout/docs/ddd/subdomain-classification), [DDD artifacts index](https://iqvo.github.io/checkout/docs/ddd/ddd-artifacts) |
+| ddd-crew pack | [Core domain chart](https://iqvo.github.io/checkout/docs/ddd/core-domain-chart), [Bounded context canvas](https://iqvo.github.io/checkout/docs/ddd/bounded-context-canvas), [Context map](https://iqvo.github.io/checkout/docs/ddd/context-map), [Aggregate design canvas](https://iqvo.github.io/checkout/docs/ddd/aggregate-design-canvas), [Domain message flow](https://iqvo.github.io/checkout/docs/ddd/domain-message-flow), [EventStorming](https://iqvo.github.io/checkout/docs/ddd/eventstorming), [Class diagrams](https://iqvo.github.io/checkout/docs/ddd/class-diagram), [Entity relationship](https://iqvo.github.io/checkout/docs/ddd/entity-relationship), [Sequence diagrams](https://iqvo.github.io/checkout/docs/ddd/sequence-diagrams), [Domain events](https://iqvo.github.io/checkout/docs/ddd/domain-events) |
+| API reference | [API overview](https://iqvo.github.io/checkout/docs/api-reference) (REST, events, MCP, A2A), the REST reference generated from `apis/openapi.yaml`, [Event catalogue](https://iqvo.github.io/checkout/docs/api-reference/events) (from `apis/asyncapi.yaml`) |
+| Ecosystem | [Integration](https://iqvo.github.io/checkout/docs/ecosystem/integration) (upstream and downstream edges and their failure behaviour), [MCP tools](https://iqvo.github.io/checkout/docs/mcp/tools) (`get_checkout_session`) |
+| Decisions | [ADR index](https://iqvo.github.io/checkout/docs/adr) (the repo's own ADRs, `docs/adr/`) |
 
 ## Architecture
 
@@ -310,10 +317,11 @@ publish) run only on pushes to `main`, after every other job is green.
 
 ## Architecture Decision Records
 
-[`docs/adr/`](docs/adr/) — 7 ADRs (0001 bounded context, 0002 assumptions,
+[`docs/adr/`](docs/adr/) — 8 ADRs (0001 bounded context, 0002 assumptions,
 0003 synchronous contracts and the anti-corruption layer, 0004 CloudEvents
 envelope and type catalogue, 0005 MCP server, 0006 fleet observability
-standard, 0007 A2A inbound adapter).
+standard, 0007 A2A inbound adapter, 0008 requoted delivery dates in the
+destination's time zone).
 
 ## License
 

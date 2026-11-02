@@ -1,3 +1,11 @@
+---
+id: before-first-release
+title: Before the first release
+sidebar_label: Before the first release
+sidebar_position: 5
+description: The packaging checklist to work through before the first develop to main PR of Checkout.
+---
+
 # Before the first release: checkout
 
 The first merge to `main` runs `docker-publish` and `release`. Two services built from
@@ -32,3 +40,17 @@ Tick this list in the PR that adds `Dockerfile`/chart wiring, and keep the file:
 service's packaging record. Reference for the three failures this list prevents: a runtime that
 can run without Postgres/Kafka (row 1), Go files at the root (row 2), a release that fails on
 the first push to `main` because packaging was never built (rows 3-8).
+
+## Where checkout stands against this list
+
+Read from the code on this branch, not ticked by a person:
+
+| # | State | Evidence |
+|---|-------|----------|
+| 1 | in place | `cmd/**` import no memory adapter; `TestRuntimeBinaryHasNoInMemoryAdapters`; `cmd/api` exits at boot on a missing `DATABASE_URL`, `KAFKA_BROKERS` or sibling URL |
+| 2 | in place | no `*.go` at the root; `TestNoGoFilesAtRepoRoot`; the godog runner is `internal/bdd` over `features/` |
+| 3, 4 | in place | `Dockerfile` builds every `cmd/*` (`api`, `mcp`, `a2a`), `ENTRYPOINT ["./api"]`, `EXPOSE 8080 8090 8093`; `.dockerignore` exists |
+| 5-8 | in place | `charts/checkout` with `tests/render_test.sh` and `tests/test_service_selectors.py`; `terminationGracePeriodSeconds: 80` |
+| 9 | not applicable | this context consumes no topic, so there is no consumer group; the chart refuses any `*_CONSUMER_GROUP` |
+| 10 | in place | `ci.yml` has `api-lint` (both specs) and no `web` or `docs-api-drift` job, because the repo has no `web/` |
+| 11, 12 | not verifiable from the code | registry access and a clean `make vuln` are facts of the day |
