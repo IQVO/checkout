@@ -31,16 +31,17 @@ func TestFeatures(t *testing.T) {
 
 // world is the state of one scenario.
 type world struct {
-	store    *memory.Store
-	clock    *memory.Clock
-	carts    *memory.Carts
-	offers   *memory.Offers
-	quoter   *memory.Quoter
-	payments *memory.Payments
-	placer   *memory.Placer
-	alerts   *memory.Alerts
-	deps     usecases.Deps
-	srv      *httptest.Server
+	store     *memory.Store
+	clock     *memory.Clock
+	carts     *memory.Carts
+	offers    *memory.Offers
+	quoter    *memory.Quoter
+	payments  *memory.Payments
+	placer    *memory.Placer
+	alerts    *memory.Alerts
+	deps      usecases.Deps
+	srv       *httptest.Server
+	readiness *httpadapter.Readiness
 
 	keys int
 
@@ -67,9 +68,10 @@ func newWorld() *world {
 func (w *world) api() *httptest.Server {
 	if w.srv == nil {
 		d := w.deps
+		w.readiness = httpadapter.NewReadiness(0, 0)
 		w.srv = httptest.NewServer(httpadapter.NewRouter(&httpadapter.Server{
 			OpenSession: usecases.OpenSession{Deps: d}, ConfirmSession: usecases.ConfirmSession{Deps: d}, GetSession: usecases.GetSession{Deps: d},
-			IdempotencyStore: w.store.Idempotency(), Clock: d.Clock,
+			IdempotencyStore: w.store.Idempotency(), Clock: d.Clock, Readiness: w.readiness,
 		}, nil, ""))
 	}
 	return w.srv
@@ -96,4 +98,5 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerPolicies(sc, w)
 	registerAssertions(sc, w)
 	registerWorldAssertions(sc, w)
+	registerWave2(sc, w)
 }
