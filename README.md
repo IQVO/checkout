@@ -323,11 +323,11 @@ publish) run only on pushes to `main`, after every other job is green.
 
 ## Architecture Decision Records
 
-[`docs/adr/`](docs/adr/) — 8 ADRs (0001 bounded context, 0002 assumptions,
+[`docs/adr/`](docs/adr/index.md) — 9 ADRs (0001 bounded context, 0002 assumptions,
 0003 synchronous contracts and the anti-corruption layer, 0004 CloudEvents
 envelope and type catalogue, 0005 MCP server, 0006 fleet observability
 standard, 0007 A2A inbound adapter, 0008 requoted delivery dates in the
-destination's time zone).
+destination's time zone, 0009 fleet REST API guideline).
 
 ## License
 

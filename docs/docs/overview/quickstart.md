@@ -41,7 +41,7 @@ make help          # list the targets
 make build         # go build ./...
 make test          # go test ./... -race
 make arch-test     # go test ./internal/architecture/... -v
-make bdd           # go test ./... -run TestFeatures -v   (34 scenarios in features/)
+make bdd           # go test ./... -run TestFeatures -v   (89 scenario blocks in features/)
 make coverage      # tests with -race plus the 90% gate over domain + application
 make check         # fmt-check vet build lint test
 make check-all     # check + coverage arch-test bdd
