@@ -1,0 +1,874 @@
+openapi: 3.0.3
+info:
+  title: Pricing API
+  version: 1.0.0
+  contact:
+    name: pricing maintainers
+    url: https://github.com/IQVO/pricing
+  description: >-
+    REST contract of the pricing bounded context of the digital
+    storefront, derived from storefront/model/model.yaml (contexts[pricing].rest).
+    Pricing owns what a shopper pays: list prices and
+    sale windows per catalogue item, the delivery charge per service tier, a
+    synthetic tax table, and the binding, immutable, expiring PriceQuote a
+    checkout session is confirmed against. One configured currency (ISO 4217),
+    integer minor units. Errors are RFC 9457 problem details
+    (application/problem+json) whose type is /problems/<slug>. The shared
+    problem types are not-found (404), illegal-transition (409),
+    concurrent-update (409) and validation-failed (422); each Err of the model
+    adds one kebab-case slug. Every POST takes an Idempotency-Key header
+    (PUT needs none); a key reused with a different request is 409
+    idempotency-key-reused. Collections are keyset-paged with limit and cursor
+    and answer { items, nextCursor }.
+    No authentication, consistent with the rest of the estate.
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: ItemPrices
+    description: List price and sale windows per catalogue item (ItemPrice).
+  - name: DeliveryCharges
+    description: The delivery charge per service tier (DeliveryChargeSchedule, one current, versioned).
+  - name: TaxTables
+    description: The synthetic tax table (TaxTable, one current, versioned).
+  - name: PriceQuotes
+    description: Binding, immutable, expiring price snapshots for checkout (PriceQuote).
+paths:
+  /item-prices:
+    post:
+      tags: [ItemPrices]
+      operationId: createItemPrice
+      summary: Create the price record of a catalogue item
+      description: >-
+        Creates the ItemPrice aggregate for a catalogue item that exists in
+        the local CatalogItemView (fed by offer-availability events). The
+        initial list price is set here; sale windows are scheduled separately.
+        An id outside 1-64 characters of A-Z a-z 0-9 . _ : - (starting with a
+        letter or digit) is 422 validation-failed.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateItemPriceRequest'
+      responses:
+        '201':
+          description: The created item price.
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemPrice'
+        '400':
+          $ref: '#/components/responses/IdempotencyKeyInvalid'
+        '409':
+          description: concurrent-update (including a second create for the same item) or idempotency-key-reused.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: >-
+            validation-failed (including an amount above 1000000000 minor
+            units), negative-amount (ErrNegativeAmount), currency-mismatch
+            (ErrCurrencyMismatch) or unknown-catalog-item
+            (ErrUnknownCatalogItem: the item is not known or is discontinued in
+            the CatalogItemView).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    get:
+      tags: [ItemPrices]
+      operationId: listItemPrices
+      summary: List item prices, keyset-paged (projection bootstrap)
+      description: >-
+        Keyset-paged list of item prices ordered by (catalogItemId). Used by
+        product-discovery's projection rebuild (snapshot + catch-up); not part
+        of a user request path. Follow nextCursor until it is absent. Any query
+        parameter other than limit and cursor is answered 400
+        unknown-query-parameter.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: The page of item prices.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemPriceList'
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+  /item-prices/{catalogItemId}:
+    get:
+      tags: [ItemPrices]
+      operationId: getItemPrice
+      summary: Get the price record of one catalogue item
+      description: Returns the ItemPrice with its list price, sale windows and version.
+      parameters:
+        - $ref: '#/components/parameters/CatalogItemId'
+      responses:
+        '200':
+          description: The item price.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemPrice'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /item-prices/{catalogItemId}/list-price:
+    put:
+      tags: [ItemPrices]
+      operationId: setListPrice
+      summary: Set the list price of a catalogue item
+      description: >-
+        SetListPrice. Replaces the list price attribute of the item price
+        (PUT, idempotent by method; an Idempotency-Key header is accepted and
+        ignored). Publishes ItemPriceChanged when the effective price changes.
+      parameters:
+        - $ref: '#/components/parameters/CatalogItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetListPriceRequest'
+      responses:
+        '200':
+          description: The updated item price.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemPrice'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: illegal-transition (price WITHDRAWN) or concurrent-update (also a version that does not match).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: validation-failed, negative-amount (ErrNegativeAmount), currency-mismatch (ErrCurrencyMismatch) or unknown-catalog-item (ErrUnknownCatalogItem).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /item-prices/{catalogItemId}/withdrawals:
+    post:
+      tags: [ItemPrices]
+      operationId: withdrawPrice
+      summary: Withdraw the price of a catalogue item
+      description: >-
+        WithdrawPrice (merchandising). ACTIVE to WITHDRAWN; the item can no
+        longer be quoted and ItemPriceWithdrawn is published. The same
+        transition runs automatically when the item is discontinued
+        (WithdrawOnDiscontinue). Transition resource: answers 200 with the
+        withdrawn item price.
+      parameters:
+        - $ref: '#/components/parameters/CatalogItemId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The withdrawn item price.
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemPrice'
+        '400':
+          $ref: '#/components/responses/IdempotencyKeyInvalid'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: illegal-transition (already WITHDRAWN), concurrent-update or idempotency-key-reused.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /item-prices/{catalogItemId}/sales:
+    post:
+      tags: [ItemPrices]
+      operationId: scheduleSale
+      summary: Schedule a sale window for a catalogue item
+      description: >-
+        ScheduleSale. A sale price is always below the list price and windows
+        of one item never overlap; a window ends after it starts, ends in the
+        future, and an item holds at most 50 live windows (else 422
+        validation-failed). PublishEffectivePriceOnWindowBoundary emits
+        ItemPriceChanged when the sale starts or ends.
+      parameters:
+        - $ref: '#/components/parameters/CatalogItemId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleSaleRequest'
+      responses:
+        '201':
+          description: The scheduled sale window.
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaleWindow'
+        '400':
+          $ref: '#/components/responses/IdempotencyKeyInvalid'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: overlapping-sale-window (ErrOverlappingSaleWindow), illegal-transition (price WITHDRAWN), concurrent-update or idempotency-key-reused.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: validation-failed, negative-amount (ErrNegativeAmount), currency-mismatch (ErrCurrencyMismatch), sale-not-below-list (ErrSaleNotBelowList) or unknown-catalog-item (ErrUnknownCatalogItem).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /item-prices/{catalogItemId}/sales/{saleId}/cancellations:
+    post:
+      tags: [ItemPrices]
+      operationId: cancelSale
+      summary: Cancel a scheduled sale window
+      description: >-
+        CancelSale. Transition resource: answers 200 with the updated item
+        price. Cancelling a live sale emits ItemPriceChanged at the boundary.
+      parameters:
+        - $ref: '#/components/parameters/CatalogItemId'
+        - $ref: '#/components/parameters/SaleId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The updated item price.
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemPrice'
+        '400':
+          $ref: '#/components/responses/IdempotencyKeyInvalid'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: illegal-transition, concurrent-update or idempotency-key-reused.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /delivery-charge-schedules:
+    post:
+      tags: [DeliveryCharges]
+      operationId: publishChargeSchedule
+      summary: Publish a new delivery charge schedule
+      description: >-
+        PublishChargeSchedule. A schedule names a charge (and optional
+        free-over threshold) for every service tier (SAME_DAY, NEXT_DAY,
+        TWO_DAY, STANDARD); the new version supersedes the current one and
+        DeliveryChargeScheduleChanged is published.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishChargeScheduleRequest'
+      responses:
+        '201':
+          description: The published schedule.
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryChargeSchedule'
+        '400':
+          $ref: '#/components/responses/IdempotencyKeyInvalid'
+        '409':
+          description: non-increasing-version (ErrNonIncreasingVersion), concurrent-update or idempotency-key-reused.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: validation-failed or incomplete-charge-schedule (ErrIncompleteChargeSchedule).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /delivery-charge-schedules/current:
+    get:
+      tags: [DeliveryCharges]
+      operationId: getCurrentChargeSchedule
+      summary: Get the current delivery charge schedule
+      description: Returns the one current DeliveryChargeSchedule.
+      responses:
+        '200':
+          description: The current schedule.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryChargeSchedule'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /tax-tables:
+    post:
+      tags: [TaxTables]
+      operationId: publishTaxTable
+      summary: Publish a new tax table
+      description: >-
+        PublishTaxTable. Basis-point rates by destination postal-prefix band;
+        bands never overlap. The new version supersedes the current one and
+        TaxTableChanged is published.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishTaxTableRequest'
+      responses:
+        '201':
+          description: The published tax table.
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxTable'
+        '400':
+          $ref: '#/components/responses/IdempotencyKeyInvalid'
+        '409':
+          description: non-increasing-version (ErrNonIncreasingVersion), concurrent-update or idempotency-key-reused.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: validation-failed, overlapping-tax-band (ErrOverlappingTaxBand) or rate-out-of-range (ErrRateOutOfRange).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /tax-tables/current:
+    get:
+      tags: [TaxTables]
+      operationId: getCurrentTaxTable
+      summary: Get the current tax table
+      description: Returns the one current TaxTable.
+      responses:
+        '200':
+          description: The current tax table.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxTable'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /price-quotes:
+    post:
+      tags: [PriceQuotes]
+      operationId: issuePriceQuote
+      summary: Issue a binding price quote for a checkout
+      description: >-
+        IssuePriceQuote. The quote is binding, immutable and expiring (policy
+        QuoteTtl, default 15 minutes): lines with unit and line totals, groups
+        with tier and delivery charge, tax, total, and the versions of price,
+        schedule and tax table used. PriceQuoteIssued is published to the
+        analytics topic. Called by checkout at session open.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssuePriceQuoteRequest'
+      responses:
+        '201':
+          description: The issued quote.
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceQuote'
+        '400':
+          $ref: '#/components/responses/IdempotencyKeyInvalid'
+        '409':
+          description: concurrent-update or idempotency-key-reused (the key was already used with a different request).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: >-
+            validation-failed (at most 100 lines, 50 groups, quantity 1-1000,
+            each item on one line, every line in exactly one group, a 3
+            character destination prefix), item-not-priced (ErrItemNotPriced:
+            no active price, a WITHDRAWN or unknown item), empty-quote
+            (ErrEmptyQuote), no-charge-schedule (ErrNoChargeSchedule) or
+            no-tax-table (ErrNoTaxTable), negative-amount or currency-mismatch.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /price-quotes/{quoteId}:
+    get:
+      tags: [PriceQuotes]
+      operationId: getPriceQuote
+      summary: Get a price quote
+      description: Returns the immutable PriceQuote, ISSUED or EXPIRED.
+      parameters:
+        - $ref: '#/components/parameters/QuoteId'
+      responses:
+        '200':
+          description: The price quote.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceQuote'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  headers:
+    IdempotencyReplayed:
+      description: >-
+        "true" when this response is the stored answer of an earlier request
+        carrying the same Idempotency-Key (the handler did not run again).
+        Absent on the first execution.
+      schema:
+        type: string
+        enum: ['true']
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >-
+        1-128 printable ASCII characters, a client-generated UUID per logical
+        submit (a retry reuses it). A repeated key with the same method, path
+        and body returns the stored response (any status below 500, a 4xx too,
+        kept 24 hours) with Idempotency-Replayed: true; with a different
+        method, path or body it is 409 idempotency-key-reused. A 5xx is never
+        stored, so the key can retry.
+        Missing is 400 idempotency-key-required; malformed is 400
+        idempotency-key-invalid.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Page size, 1-500 (default 100). Out of range is 400 invalid-limit.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 100
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: >-
+        Opaque keyset cursor taken from the previous page's nextCursor; an
+        undecodable cursor is 400 invalid-cursor.
+      schema:
+        type: string
+    CatalogItemId:
+      name: catalogItemId
+      in: path
+      required: true
+      schema:
+        type: string
+    SaleId:
+      name: saleId
+      in: path
+      required: true
+      schema:
+        type: string
+    QuoteId:
+      name: quoteId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    NotFound:
+      description: not-found (the resource does not exist, or an unknown sale) or resource-not-found (a path identifier that is empty, over 128 characters or carries a NUL).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    IdempotencyKeyInvalid:
+      description: >-
+        idempotency-key-required (header missing), idempotency-key-invalid (not
+        1-128 printable ASCII characters) or malformed-request (bad JSON, an
+        unknown field, a wrong type, an empty body, trailing data, a body over
+        64 KiB or a NUL character in the body or query string).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    MalformedRequest:
+      description: >-
+        malformed-request: bad JSON, an unknown field, a wrong type, an empty
+        body, trailing data, a body over 64 KiB, or a NUL character (U+0000) in
+        the body or the query string.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InvalidQuery:
+      description: invalid-limit, invalid-cursor, unknown-query-parameter or malformed-request (a NUL character in the query string).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details.
+      required: [type, title, status, detail, instance]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          description: Problem type URI, /problems/<slug>, for example /problems/overlapping-sale-window.
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+    Money:
+      type: object
+      required: [amountMinor, currency]
+      properties:
+        amountMinor:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1000000000
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+    Tier:
+      type: string
+      enum: [SAME_DAY, NEXT_DAY, TWO_DAY, STANDARD]
+    SaleWindow:
+      type: object
+      required: [saleId, price, from, to]
+      properties:
+        saleId:
+          type: string
+        price:
+          $ref: '#/components/schemas/Money'
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+    ItemPrice:
+      type: object
+      required: [catalogItemId, listPrice, effectivePrice, sales, version, state]
+      properties:
+        catalogItemId:
+          type: string
+        state:
+          type: string
+          enum: [ACTIVE, WITHDRAWN]
+        listPrice:
+          $ref: '#/components/schemas/Money'
+        effectivePrice:
+          $ref: '#/components/schemas/Money'
+        sales:
+          type: array
+          items:
+            $ref: '#/components/schemas/SaleWindow'
+        version:
+          type: integer
+          minimum: 1
+    ItemPriceList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemPrice'
+        nextCursor:
+          type: string
+          description: Opaque cursor of the next page; absent on the last page.
+    CreateItemPriceRequest:
+      type: object
+      required: [catalogItemId, listPrice]
+      properties:
+        catalogItemId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$'
+        listPrice:
+          $ref: '#/components/schemas/Money'
+    SetListPriceRequest:
+      type: object
+      required: [listPrice]
+      properties:
+        listPrice:
+          $ref: '#/components/schemas/Money'
+        version:
+          type: integer
+          format: int64
+          description: >-
+            Optional optimistic-concurrency guard; a value above 0 that differs
+            from the current version is 409 concurrent-update, 0, negative or
+            absent means no guard.
+    ScheduleSaleRequest:
+      type: object
+      required: [price, from, to]
+      properties:
+        price:
+          $ref: '#/components/schemas/Money'
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+    TierCharge:
+      type: object
+      required: [tier, charge]
+      properties:
+        tier:
+          $ref: '#/components/schemas/Tier'
+        charge:
+          $ref: '#/components/schemas/Money'
+        freeOver:
+          $ref: '#/components/schemas/Money'
+    DeliveryChargeSchedule:
+      type: object
+      required: [scheduleId, version, tiers, state]
+      properties:
+        scheduleId:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        state:
+          type: string
+          enum: [CURRENT, SUPERSEDED]
+        tiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/TierCharge'
+    PublishChargeScheduleRequest:
+      type: object
+      required: [version, tiers]
+      properties:
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 2147483647
+        tiers:
+          type: array
+          description: Exactly one charge per tier; a missing tier is 422 incomplete-charge-schedule, a repeated or unknown tier 422 validation-failed.
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/TierCharge'
+    TaxBand:
+      type: object
+      required: [postalPrefixFrom, postalPrefixTo, rateBasisPoints]
+      properties:
+        postalPrefixFrom:
+          type: string
+          pattern: '^[A-Z0-9]{3}$'
+        postalPrefixTo:
+          type: string
+          pattern: '^[A-Z0-9]{3}$'
+          description: Not before postalPrefixFrom.
+        rateBasisPoints:
+          type: integer
+          minimum: 0
+          maximum: 10000
+    TaxTable:
+      type: object
+      required: [taxTableId, version, bands, state]
+      properties:
+        taxTableId:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        state:
+          type: string
+          enum: [CURRENT, SUPERSEDED]
+        bands:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxBand'
+    PublishTaxTableRequest:
+      type: object
+      required: [version, bands]
+      properties:
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 2147483647
+        bands:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/TaxBand'
+    QuoteLine:
+      type: object
+      required: [catalogItemId, quantity, unitPrice, lineTotal]
+      properties:
+        catalogItemId:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        unitPrice:
+          $ref: '#/components/schemas/Money'
+        lineTotal:
+          $ref: '#/components/schemas/Money'
+    QuoteGroup:
+      type: object
+      required: [groupNo, tier, deliveryCharge]
+      properties:
+        groupNo:
+          type: integer
+          minimum: 1
+        tier:
+          $ref: '#/components/schemas/Tier'
+        deliveryCharge:
+          $ref: '#/components/schemas/Money'
+    IssuePriceQuoteRequest:
+      type: object
+      required: [cartId, destinationPostalPrefix, lines, groups]
+      properties:
+        cartId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$'
+        destinationPostalPrefix:
+          type: string
+          pattern: '^[A-Z0-9]{3}$'
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            required: [catalogItemId, quantity]
+            properties:
+              catalogItemId:
+                type: string
+                pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$'
+                maxLength: 64
+              quantity:
+                type: integer
+                minimum: 1
+                maximum: 1000
+        groups:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            required: [groupNo, offerId, tier, lineNos]
+            properties:
+              groupNo:
+                type: integer
+                minimum: 1
+                maximum: 2147483647
+              offerId:
+                type: string
+                pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$'
+                maxLength: 64
+              tier:
+                $ref: '#/components/schemas/Tier'
+              lineNos:
+                type: array
+                minItems: 1
+                description: 1-based positions of the request lines shipped in this group.
+                items:
+                  type: integer
+                  minimum: 1
+    PriceQuote:
+      type: object
+      required: [quoteId, cartId, state, currency, lines, groups, taxMinor, totalMinor, versions, issuedAt, expiresAt]
+      properties:
+        quoteId:
+          type: string
+        cartId:
+          type: string
+        state:
+          type: string
+          enum: [ISSUED, EXPIRED]
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuoteLine'
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuoteGroup'
+        taxMinor:
+          type: integer
+          format: int64
+          minimum: 0
+        totalMinor:
+          type: integer
+          format: int64
+          minimum: 0
+        versions:
+          type: object
+          description: >-
+            Versions used, keyed "chargeSchedule", "taxTable" and "price:<catalogItemId>" per line.
+          additionalProperties:
+            type: integer
+            format: int64
+        issuedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
