@@ -124,7 +124,10 @@ Source: `internal/domain/checkoutsession/transitions.go` (`RecordDecline`,
 `Confirm` from `DECLINED`), `internal/adapters/outbound/customerpayments/gateway.go`
 (`Authorize`: a 201 in any state but `AUTHORIZED`, or a 422, is a decline).
 
-A decline voids nothing, because no authorization exists. The quote is the
+A decline from `customer-payments` voids nothing, because no authorization exists.
+(An authorization whose amount or currency is not the quote's also ends in `DECLINED`,
+but there an authorization does exist: `RecordAuthorization` sets it as the void owed,
+ADR 0002 A4, `internal/domain/checkoutsession/transitions.go`.) The quote is the
 clock: the session stays open for as long as the binding price quote is valid,
 and `ExpireOnQuoteExpiry` ends it afterwards (`DECLINED → EXPIRED`, hotspot H1).
 The second `AuthorizePayment` uses a new key, `sessionId:auth:attempt` with the

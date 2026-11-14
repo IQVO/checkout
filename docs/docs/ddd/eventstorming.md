@@ -165,7 +165,16 @@ Source: `internal/domain/checkoutsession/transitions.go` (`RecordDecline`,
 `Confirm` from `DECLINED`), `internal/adapters/outbound/customerpayments/gateway.go`
 (what counts as a decline).
 
-A decline voids nothing: no authorization exists. The session stays open for
+A decline from `customer-payments` (`RecordDecline`, the path in the diagram) voids
+nothing: no authorization exists. A session also goes to `DECLINED` through
+`RecordAuthorization` when the authorized amount or currency is not the quote's
+(reason `authorization-mismatch`, ADR 0002 A4). That authorization does exist, so the
+session is saved `DECLINED` with `voidOwed` set to it
+(`internal/domain/checkoutsession/transitions.go`), `CheckoutDeclined` is raised,
+`ConfirmSession` alerts and voids it at once (`settleVoid` in
+`internal/application/usecases/confirm_session.go`) and answers `409
+authorization-mismatch`; `RetryOwedVoids` retries a failed void and a new confirm
+is refused with `void-pending` until the void has succeeded. The session stays open for
 as long as the price quote is valid; `DECLINED → EXPIRED` is a
 transition (`ExpireSession`). Each `DECLINED → AUTHORIZING` increments the
 session's attempt counter (it starts at 0), so a retry with another token is a new attempt
