@@ -1,0 +1,28 @@
+{
+  "quoteId": "pq-1",
+  "cartId": "cart-1",
+  "state": "ISSUED",
+  "currency": "USD",
+  "lines": [
+    {
+      "catalogItemId": "sku-1",
+      "quantity": 2,
+      "unitPrice": { "amountMinor": 1500, "currency": "USD" },
+      "lineTotal": { "amountMinor": 3000, "currency": "USD" }
+    },
+    {
+      "catalogItemId": "sku-2",
+      "quantity": 1,
+      "unitPrice": { "amountMinor": 2000, "currency": "USD" },
+      "lineTotal": { "amountMinor": 2000, "currency": "USD" }
+    }
+  ],
+  "groups": [
+    { "groupNo": 1, "tier": "NEXT_DAY", "deliveryCharge": { "amountMinor": 999, "currency": "USD" } }
+  ],
+  "taxMinor": 400,
+  "totalMinor": 6399,
+  "versions": { "chargeSchedule": 3, "taxTable": 2, "price:sku-1": 7, "price:sku-2": 5 },
+  "issuedAt": "2026-10-25T13:00:00Z",
+  "expiresAt": "2026-10-25T13:15:00Z"
+}

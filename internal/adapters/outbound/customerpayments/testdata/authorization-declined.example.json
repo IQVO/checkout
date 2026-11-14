@@ -1,0 +1,11 @@
+{
+  "authorizationId": "auth-2",
+  "checkoutSessionId": "cs-2",
+  "orderId": null,
+  "state": "DECLINED",
+  "currency": "USD",
+  "totalMinor": 6399,
+  "allocations": [],
+  "providerAuthorizationId": null,
+  "declineReason": "insufficient-funds"
+}

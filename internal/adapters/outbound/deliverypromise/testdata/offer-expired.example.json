@@ -1,0 +1,18 @@
+{
+  "offerId": "of-78",
+  "state": "EXPIRED",
+  "groupNo": 1,
+  "destinationPostalPrefix": "787",
+  "tier": "STANDARD",
+  "lines": [{ "catalogItemId": "sku-1", "quantity": 2 }],
+  "window": {
+    "earliest": "2026-10-28T12:00:00Z",
+    "latest": "2026-10-29T20:00:00Z"
+  },
+  "witnessPath": { "nodeId": "node-pnt-7", "legs": [] },
+  "basis": "NOMINAL",
+  "policyVersion": "v3",
+  "quotedAt": "2026-10-25T13:00:00Z",
+  "expiresAt": "2026-10-25T13:20:00Z",
+  "orderByAt": "2026-10-25T18:00:00Z"
+}

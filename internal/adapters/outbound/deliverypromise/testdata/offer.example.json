@@ -1,0 +1,24 @@
+{
+  "offerId": "of-77",
+  "state": "QUOTED",
+  "groupNo": 1,
+  "destinationPostalPrefix": "787",
+  "tier": "NEXT_DAY",
+  "lines": [{ "catalogItemId": "sku-1", "quantity": 2 }],
+  "window": {
+    "earliest": "2026-10-26T12:00:00Z",
+    "latest": "2026-10-26T20:00:00Z",
+    "timeZone": "America/Chicago"
+  },
+  "witnessPath": {
+    "nodeId": "node-pnt-7",
+    "pickupDepartureId": "d-0418",
+    "legs": [],
+    "deliveryWaveId": "w-31"
+  },
+  "basis": "SCHEDULED",
+  "policyVersion": "v3",
+  "quotedAt": "2026-10-25T13:00:00Z",
+  "expiresAt": "2026-10-25T13:30:00Z",
+  "orderByAt": "2026-10-25T18:00:00Z"
+}

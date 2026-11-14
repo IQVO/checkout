@@ -1,0 +1,6 @@
+{
+  "type": "https://retailnetwork.example/problems/allocation-mismatch",
+  "title": "Allocations do not sum to the authorized total",
+  "status": 422,
+  "detail": "allocations sum to 6299, the total is 6399"
+}

@@ -1,0 +1,50 @@
+{
+  "cartId": "cart-1",
+  "shopperId": "shopper-1",
+  "state": "OPEN",
+  "lines": [
+    { "catalogItemId": "sku-1", "quantity": 2 },
+    { "catalogItemId": "sku-2", "quantity": 1 }
+  ],
+  "destinationPostalPrefix": "787",
+  "deliveryQuote": {
+    "groups": [
+      {
+        "groupNo": 1,
+        "lineNos": [1, 2],
+        "offers": [
+          {
+            "offerId": "of-1",
+            "groupNo": 1,
+            "tier": "NEXT_DAY",
+            "deliverByEarliest": "2026-10-26",
+            "deliverByLatest": "2026-10-27",
+            "expiresAt": "2026-10-25T13:30:00Z"
+          },
+          {
+            "offerId": "of-2",
+            "groupNo": 1,
+            "tier": "STANDARD",
+            "deliverByEarliest": "2026-10-28",
+            "deliverByLatest": "2026-10-29",
+            "expiresAt": "2026-10-25T13:30:00Z"
+          }
+        ]
+      }
+    ],
+    "unavailableTiers": [],
+    "unavailable": [],
+    "quotedAt": "2026-10-25T13:00:00Z"
+  },
+  "selections": [{ "groupNo": 1, "offerId": "of-1" }],
+  "estimate": {
+    "currency": "USD",
+    "itemsMinor": 5000,
+    "deliveryMinor": 999,
+    "taxMinor": 400,
+    "totalMinor": 6399,
+    "estimateComplete": true
+  },
+  "checkoutReadiness": { "ready": true, "allGroupsSelected": true, "noOfferExpired": true },
+  "version": 7
+}

@@ -1,0 +1,13 @@
+{
+  "authorizationId": "auth-1",
+  "checkoutSessionId": "cs-1",
+  "orderId": null,
+  "state": "AUTHORIZED",
+  "currency": "USD",
+  "totalMinor": 6399,
+  "allocations": [
+    { "groupNo": 1, "amountMinor": 6399, "state": "PENDING", "trackingNumber": null, "trackingNumbers": [] }
+  ],
+  "providerAuthorizationId": "pp-4471",
+  "expiresAt": "2026-10-25T19:00:00Z"
+}
