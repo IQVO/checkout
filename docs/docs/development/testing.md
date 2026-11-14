@@ -17,7 +17,7 @@ available before the commit. `make help` lists them all.
 | --- | --- | --- | --- |
 | Unit | domain aggregate and rules, use cases over in-memory doubles, adapters over `httptest`, the composition roots | `internal/domain/**`, `internal/application/usecases`, `internal/adapters/**`, `cmd/*` (`*_test.go` without a build tag) | `make test` (`go test ./... -race`) |
 | Coverage gate | statement coverage of domain and application | `COVERAGE_PKGS = ./internal/domain/...,./internal/application/...` | `make coverage`, gate 90 % |
-| Godog features | Gherkin acceptance over the real chi router and use cases wired to the in-memory doubles | `features/*.feature` (5 files, 34 scenarios) with the runner and steps in `internal/bdd` | `make bdd` (`go test ./... -run TestFeatures -v`) |
+| Godog features | Gherkin acceptance over the real chi router and use cases wired to the in-memory doubles | `features/*.feature` (10 files, 89 `Scenario` and `Scenario Outline` blocks) with the runner and steps in `internal/bdd` | `make bdd` (`go test ./... -run TestFeatures -v`) |
 | Contract | the repository contract suite run by both persistence adapters; the golden CloudEvents; the event catalogue against `apis/asyncapi.yaml`; the specs linted by Spectral | `internal/adapters/outbound/repocontract`, `internal/adapters/outbound/kafka/testdata/*.golden.json`, `internal/architecture/catalogue_fitness_test.go`, `.spectral.yaml`, `.spectral.asyncapi.yaml` | part of `make test`, `make integration`, `make arch-test`; Spectral in the `api-lint` CI job |
 | Integration | real Postgres and Kafka via testcontainers; each test boots its own container | files with `//go:build integration`: `cmd/api/e2e_*_integration_test.go` (3), `internal/adapters/outbound/postgres/*_integration_test.go` (4), `internal/adapters/outbound/outbox/main_integration_test.go` | `make integration` (`go test -tags=integration ./... -race -count=1`), needs only Docker |
 | Mutation | gremlins over the domain packages | `.gremlins.yaml`: efficacy threshold 95, mutant coverage threshold 90, 1 worker, timeout coefficient 30 | `make mutation` (every `internal/domain/<pkg>` in turn), `make mutation-full` (`./internal/domain`) |
@@ -37,7 +37,12 @@ imports them.
 | `confirm_session.feature` | 7 | authorize then place completes; a decline keeps the session open; an expired quote is refused; a closed session never changes; an authorized amount that is not the quote total is voided; a missing token is a validation error; an unknown session is not found |
 | `placement.feature` | 6 | a timeout leaves the session `PLACING` and answers 202; no new attempt while unknown; the poll until the resolver settles it; a definitive 409 voids and asks for a requote; a 422 voids, fails and alerts; a failed void stays owed and is retried |
 | `policies.feature` | 7 | expiry of `OPEN` and `DECLINED` sessions with the quote; an expired session cannot be confirmed; a stuck authorization is re-called with the same key; the 20 h alert; the 22 h give-up and void; the 24 h purge of the stored request |
-| `api_idempotency.feature` | 6 | a write without a key is refused; a replayed open and a replayed confirm return the stored answer; the same key with another request is refused; a malformed body is a problem document; an unknown session is not found |
+| `api_idempotency.feature` | 8 | a write without a key is refused; a key that is not 1 to 128 printable ASCII characters is refused; a replayed open and a replayed confirm return the stored answer; the same key with another request or on another route is refused; a malformed body is a problem document; an unknown session is not found |
+| `platform.feature` | 2 | liveness and readiness answer; the drain gate flips readiness off |
+| `session_open_rules.feature` | 12 | the OpenSession rules of the Checkout documentation (includes 6 `Examples` tables) |
+| `session_confirm_rules.feature` | 18 | the ConfirmSession rules of the Checkout documentation (includes 5 `Examples` tables) |
+| `session_policy_rules.feature` | 16 | the policy rules of the Checkout documentation (includes 2 `Examples` tables) |
+| `session_api_rules.feature` | 5 | the REST write rules: the Idempotency-Key format, the 24 hour replay window, stored error answers, a NUL character in a body, the 64 KiB body limit (includes 2 `Examples` tables) |
 
 The scenarios run through HTTP (`httptest.Server` over `NewRouter`) so status
 codes and problem slugs are asserted as a client sees them.
