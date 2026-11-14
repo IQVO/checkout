@@ -1,0 +1,6 @@
+{
+  "type": "https://retailnetwork.example/problems/illegal-transition",
+  "title": "The authorization cannot be voided",
+  "status": 409,
+  "detail": "the authorization is already voided"
+}

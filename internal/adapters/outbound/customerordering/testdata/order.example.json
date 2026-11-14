@@ -1,0 +1,24 @@
+{
+  "orderId": "co-1",
+  "shopperId": "shopper-1",
+  "status": "PLACED",
+  "destinationPostalPrefix": "787",
+  "placedAt": "2026-10-25T13:05:00Z",
+  "lines": [
+    { "lineNo": 1, "catalogItemId": "sku-1", "quantity": 2 },
+    { "lineNo": 2, "catalogItemId": "sku-2", "quantity": 1 }
+  ],
+  "groups": [
+    {
+      "groupNo": 1,
+      "promiseId": "pr-1",
+      "tier": "NEXT_DAY",
+      "shipBy": "2026-10-25T20:00:00Z",
+      "deliverByEarliest": "2026-10-26T12:00:00Z",
+      "deliverByLatest": "2026-10-26T20:00:00Z",
+      "timeZone": "America/Chicago",
+      "lineNos": [1, 2],
+      "status": "PROMISED"
+    }
+  ]
+}

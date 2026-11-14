@@ -1,0 +1,26 @@
+{
+  "type": "https://retailnetwork.example/problems/offer-not-quotable",
+  "title": "An offer expired or was consumed",
+  "status": 409,
+  "detail": "offer of-77 is not quotable",
+  "instance": "/checkout",
+  "requotedOffers": [
+    {
+      "groupNo": 1,
+      "offerId": "of-91",
+      "tier": "NEXT_DAY",
+      "deliverByEarliest": "2026-10-26T12:00:00Z",
+      "deliverByLatest": "2026-10-26T20:00:00Z",
+      "timeZone": "America/Chicago",
+      "expiresAt": "2026-10-25T18:30:00Z"
+    },
+    {
+      "groupNo": 2,
+      "offerId": "of-92",
+      "tier": "STANDARD",
+      "deliverByEarliest": "2026-10-28T12:00:00Z",
+      "deliverByLatest": "2026-10-29T20:00:00Z",
+      "expiresAt": "2026-10-25T19:00:00Z"
+    }
+  ]
+}
