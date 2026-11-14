@@ -42,8 +42,13 @@ type world struct {
 	deps      usecases.Deps
 	srv       *httptest.Server
 	readiness *httpadapter.Readiness
+	// spy and tweak sit between the use cases and payments / pricing: they
+	// record what customer-payments was asked and let a scenario skew a quote.
+	spy   *spyPayments
+	tweak *tweakQuoter
 
-	keys int
+	keys    int
+	lastKey string
 
 	status int
 	body   string
@@ -57,8 +62,10 @@ func newWorld() *world {
 		store: s, clock: clock, carts: memory.NewCarts(), offers: memory.NewOffers(), quoter: memory.NewQuoter(clock),
 		payments: &memory.Payments{}, placer: &memory.Placer{}, alerts: &memory.Alerts{},
 	}
+	w.spy = &spyPayments{inner: w.payments}
+	w.tweak = &tweakQuoter{inner: w.quoter}
 	w.deps = usecases.Deps{
-		Sessions: s.Sessions(), Carts: w.carts, Offers: w.offers, Quoter: w.quoter, Payments: w.payments, Placer: w.placer,
+		Sessions: s.Sessions(), Carts: w.carts, Offers: w.offers, Quoter: w.tweak, Payments: w.spy, Placer: w.placer,
 		Outbox: s.Outbox(), UoW: s.UnitOfWork(), Clock: clock, IDs: &memory.SequentialIDs{}, Alerter: w.alerts,
 	}
 	return w
@@ -99,4 +106,5 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerAssertions(sc, w)
 	registerWorldAssertions(sc, w)
 	registerWave2(sc, w)
+	registerRuleSteps(sc, w)
 }
