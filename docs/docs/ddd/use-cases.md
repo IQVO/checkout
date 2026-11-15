@@ -159,7 +159,7 @@ and retried at the next one.
 
 ### ResolveStuckAuthorizations
 
-- **Finds:** `AUTHORIZING` sessions older than 2 minutes (a crash or timeout
+- **Finds:** `AUTHORIZING` sessions of 2 minutes or more (a crash or timeout
   between the save and the answer).
 - **Does:** re-calls `Authorize` with the SAME key `<sessionId>:auth:<attempt>`
   and the kept token, which is idempotent and yields the true outcome, then

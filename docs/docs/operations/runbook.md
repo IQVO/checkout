@@ -251,7 +251,7 @@ UPDATE outbox_events SET attempts = 0 WHERE id = <id>;
 | Policy | Tick | Finds | Does |
 | --- | --- | --- | --- |
 | `ResolveInDoubtPlacements` | 15 s (`INDOUBT_SWEEP_INTERVAL`) | `PLACING` sessions whose `next_attempt_at` is due | re-sends the stored placement request with the same `Idempotency-Key` (the sessionId); settles a definitive answer; alerts at 20 h; gives up and voids at 22 h |
-| `ResolveStuckAuthorizations` | 30 s (`STUCK_SWEEP_INTERVAL`) | `AUTHORIZING` for more than 2 minutes | re-calls AuthorizePayment with the SAME key `<sessionId>:auth:<attempt>` and the kept token, which yields the true outcome |
+| `ResolveStuckAuthorizations` | 30 s (`STUCK_SWEEP_INTERVAL`) | `AUTHORIZING` for 2 minutes or more | re-calls AuthorizePayment with the SAME key `<sessionId>:auth:<attempt>` and the kept token, which yields the true outcome |
 | `RetryOwedVoids` | 1 m (`VOID_SWEEP_INTERVAL`) | sessions with `void_authorization_id` set | voids the authorization (`<sessionId>:void`) until it succeeds |
 | `ExpireOnQuoteExpiry` | 1 m (`EXPIRY_SWEEP_INTERVAL`) | `OPEN` or `DECLINED` sessions past `quote_expires_at` | moves them to `EXPIRED` |
 | `PurgeStoredPlacements` | 1 h (`PURGE_SWEEP_INTERVAL`) | closed sessions 24 h after `terminal_at` that still hold a placement body | drops the stored request (raises no event) |

@@ -93,7 +93,7 @@ flowchart TB
     E1["CheckoutCompleted"]:::event
     P1["shopping-cart<br/>CloseOnCheckoutCompleted"]:::policy
     P2["customer-payments<br/>BindOrderOnCheckoutCompleted"]:::policy
-    P3["ResolveStuckAuthorizations<br/>AUTHORIZING over 2 min,<br/>same key"]:::policy
+    P3["ResolveStuckAuthorizations<br/>AUTHORIZING 2 min or more,<br/>same key"]:::policy
 
     S --> C1
     C1 --> G1
@@ -124,7 +124,7 @@ Source: `internal/domain/checkoutsession/transitions.go` and `terminals.go`
 consumers named on [Integration](/docs/ecosystem/integration).
 
 `ResolveStuckAuthorizations` settles an unknown authorize outcome: a session
-in `AUTHORIZING` for more than 2 minutes re-calls `AuthorizePayment` with the
+in `AUTHORIZING` for 2 minutes or more re-calls `AuthorizePayment` with the
 same key `<sessionId>:auth:<attempt>`, which is idempotent and yields the
 true outcome; `customer-payments`' 24 h void stays the backstop.
 
@@ -332,7 +332,7 @@ bounded-context view is on the
 | H1 | Where does `DECLINED` go when the quote expires? | Settled: `DECLINED` is not closed. `ExpireSession` accepts `OPEN` and `DECLINED` (policy `ExpireOnQuoteExpiry`); `ErrSessionClosed` covers `COMPLETED`, `EXPIRED`, `FAILED` and `REQUOTE_REQUIRED` only. | `internal/domain/checkoutsession/terminals.go`, `session.go` |
 | H2 | What key does a second authorize use? | Settled: `<sessionId>:auth:<attempt>`. The counter starts at 0 and grows by one on each `DECLINED → AUTHORIZING`, so a retry with another token is a new attempt while a stuck call replays the same key. | `transitions.go` (`Confirm`), `usecases/confirm_session.go` |
 | H3 | What if an offer is no longer quotable? | Settled at open only: `ErrOfferNotQuotable` (`422 offer-not-quotable`), no state change. There is no second check at confirm; a late expiry surfaces as a definitive `409` from customer-ordering and ends in `REQUOTE_REQUIRED`. | `open.go` (`checkOffers`), `customerordering/gateway.go` |
-| H4 | What ends `AUTHORIZING` when the outcome is unknown? | Settled: `ResolveStuckAuthorizations` re-calls `AuthorizePayment` with the same key for a session in `AUTHORIZING` for more than 2 minutes. | `usecases/policies.go`, `transitions.go` (`StuckAuthorizationAfter`) |
+| H4 | What ends `AUTHORIZING` when the outcome is unknown? | Settled: `ResolveStuckAuthorizations` re-calls `AuthorizePayment` with the same key for a session in `AUTHORIZING` for 2 minutes or more. | `usecases/policies.go`, `transitions.go` (`StuckAuthorizationAfter`) |
 | H5 | What does a failed void do? | Settled: the owed void is stored with the decision (a definitive `409`, `400`, `422` or `ErrAuthorizationMismatch`) and `RetryOwedVoids` retries every minute. `Void` is idempotent. | `usecases/settle.go`, `policies.go` |
 | H6 | The resolver and the 24 h void race. | Settled: an ordered timeline: alert at 20 h, `ResolveInDoubtPlacements` gives up and voids at 22 h. The customer-payments backstop at 24 h is that service's own policy; a race between the two voids is harmless. | `usecases/resolve_in_doubt.go` |
 | H7 | Silent outcomes. | Settled: two analytics-only events, `CheckoutSessionExpired` and `CheckoutPlacementInDoubt`. `Confirm` and `RecordAuthorization` stay eventless; `CheckoutCompleted` covers the outcome. | `events.go` |

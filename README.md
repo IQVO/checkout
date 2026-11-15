@@ -306,7 +306,7 @@ lefthook install
 go test ./... -race                        # unit suites
 make coverage                              # domain+application coverage, CI gate >= 90%
 go test -tags=integration ./...            # testcontainers Postgres/Kafka (Docker only)
-go test ./features/ -run TestFeatures -v   # godog/BDD over the real HTTP API
+go test ./internal/bdd -run TestFeatures -v # godog/BDD over the real HTTP API
 go test ./internal/architecture/... -v     # architecture fitness tests (arch-go)
 gremlins unleash ./internal/domain         # mutation, thresholds in .gremlins.yaml
 ```
