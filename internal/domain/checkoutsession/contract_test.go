@@ -2,6 +2,7 @@ package checkoutsession_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	cs "github.com/IQVO/checkout/internal/domain/checkoutsession"
@@ -66,5 +67,19 @@ func TestOpenLineBoundsAreValidation(t *testing.T) {
 	in.Cart.Lines = make([]cs.CartLine, cs.MaxLines+1)
 	if _, err := cs.Open(in, t0); !isErr(err, cs.ErrContractViolation) {
 		t.Fatalf("too many lines: %v", err)
+	}
+}
+
+// A repeated group number is refused as out of order by the group check itself
+// (not by a later, unrelated check).
+func TestOpenNamesARepeatedGroupNumberAsOutOfOrder(t *testing.T) {
+	in := validInput()
+	in.Cart.Groups[1].GroupNo = 1
+	_, err := cs.Open(in, t0)
+	if !isErr(err, cs.ErrContractViolation) {
+		t.Fatalf("err = %v, want ErrContractViolation", err)
+	}
+	if want := "group 1 is malformed or out of order"; !strings.Contains(err.Error(), want) {
+		t.Fatalf("err = %q, want it to say %q", err, want)
 	}
 }

@@ -27,5 +27,13 @@ unleash:
     # differs. See HARNESS.md's mutation-testing section for the
     # tagless-switch-under-reports pitfall before assuming a low number
     # means missing tests.
-    efficacy: "95"
-    mutant-coverage: "90"
+    # Measured 2026-11-15 per package (gremlins v0.6.0, `make mutation`):
+    # checkoutsession 98.40 efficacy / 94.70 mutator coverage (123 killed,
+    # 2 lived, 7 not covered), shared 100/100. The 9 residuals are equivalent
+    # mutants or `const` duration artefacts listed in MUTATION.md, so the gates
+    # sit just below the lowest package (checkoutsession), not at the fleet's 99.
+    # Thresholds are plain numbers on purpose: gremlins v0.6.0 reads them with a
+    # float type assertion, so a quoted string ("95") is read as 0 and the gate
+    # never fails.
+    efficacy: 98
+    mutant-coverage: 94

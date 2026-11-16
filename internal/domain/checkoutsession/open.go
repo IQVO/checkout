@@ -107,19 +107,25 @@ func Open(in OpenInput, now time.Time) (*CheckoutSession, error) {
 	return s, nil
 }
 
+// checkIdentity is an if-chain rather than a tagless switch: the Go cover tool
+// does not instrument `case` expressions, which gremlins reports as NOT COVERED.
 func checkIdentity(in OpenInput, now time.Time) error {
-	switch {
-	case !shared.ValidID(string(in.ID)):
+	if !shared.ValidID(string(in.ID)) {
 		return shared.Invalid("sessionId must be a valid id")
-	case !shared.ValidID(in.Cart.CartID):
+	}
+	if !shared.ValidID(in.Cart.CartID) {
 		return shared.Invalid("cartId must be a valid id")
-	case !shared.ValidID(in.ShopperID):
+	}
+	if !shared.ValidID(in.ShopperID) {
 		return shared.Invalid("shopperId must be a valid id")
-	case !shared.ValidID(in.ShipToAddressID):
+	}
+	if !shared.ValidID(in.ShipToAddressID) {
 		return shared.Invalid("shipToAddressId must be a valid id")
-	case now.IsZero():
+	}
+	if now.IsZero() {
 		return shared.Invalid("an opening instant is required")
-	case in.Cart.Version < 1:
+	}
+	if in.Cart.Version < 1 {
 		return shared.Invalid("the cart version must be at least 1")
 	}
 	return nil
