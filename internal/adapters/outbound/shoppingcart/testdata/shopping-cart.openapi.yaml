@@ -620,7 +620,15 @@ components:
           format: uri-reference
     Tier:
       type: string
-      enum: [SAME_DAY, NEXT_DAY, TWO_DAY, STANDARD]
+      description: Delivery service tier. CONSOLIDATED is delivery-promise's opt-in tier of a customer-chosen
+        delivery day; a cart quotes it only when the quote asked for it, so a client that never asks never sees it.
+      enum: [SAME_DAY, NEXT_DAY, TWO_DAY, STANDARD, CONSOLIDATED]
+    CapacityBand:
+      type: string
+      description: The capacity pressure delivery-promise read on the offer's window when it quoted it. AMPLE is
+        below 60 percent utilisation, TIGHT from 60 to below 85, SCARCE from 85. A signal only; it changes no
+        offer, window or order, and the network computes no fee from it.
+      enum: [AMPLE, TIGHT, SCARCE]
     CartState:
       type: string
       enum: [OPEN, CHECKED_OUT, ABANDONED, MERGED]
@@ -671,6 +679,13 @@ components:
         expiresAt:
           type: string
           format: date-time
+        consolidationEligible:
+          type: boolean
+          description: Present only for the tier CONSOLIDATED (delivery-promise ADR 0024), relayed as quoted - true when
+            the chosen delivery day leaves the network at least one local day after the fastest feasible window to merge
+            the order with others, false when the day is that window itself. Omitted for every other tier.
+        capacityBand:
+          $ref: '#/components/schemas/CapacityBand'
     QuoteGroup:
       type: object
       required: [groupNo, lineNos, offers]
