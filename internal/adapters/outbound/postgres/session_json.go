@@ -20,6 +20,9 @@ type groupJSON struct {
 	Tier        string `json:"tier"`
 	LineNos     []int  `json:"lineNos"`
 	AmountMinor int64  `json:"amountMinor"`
+	// Optional and omitted when empty: sessions stored before the CONSOLIDATED tier read back unchanged.
+	ConsolidationEligible *bool  `json:"consolidationEligible,omitempty"`
+	CapacityBand          string `json:"capacityBand,omitempty"`
 }
 
 type requotedJSON struct {
@@ -54,7 +57,8 @@ func unmarshalLines(b []byte) ([]checkoutsession.Line, error) {
 func marshalGroups(in []checkoutsession.Group) ([]byte, error) {
 	out := make([]groupJSON, len(in))
 	for i, g := range in {
-		out[i] = groupJSON{GroupNo: g.GroupNo, OfferID: g.OfferID, Tier: string(g.Tier), LineNos: g.LineNos, AmountMinor: g.AmountMinor}
+		out[i] = groupJSON{GroupNo: g.GroupNo, OfferID: g.OfferID, Tier: string(g.Tier), LineNos: g.LineNos, AmountMinor: g.AmountMinor,
+			ConsolidationEligible: g.ConsolidationEligible, CapacityBand: string(g.CapacityBand)}
 	}
 	return json.Marshal(out)
 }
@@ -66,7 +70,8 @@ func unmarshalGroups(b []byte) ([]checkoutsession.Group, error) {
 	}
 	out := make([]checkoutsession.Group, len(in))
 	for i, g := range in {
-		out[i] = checkoutsession.Group{GroupNo: g.GroupNo, OfferID: g.OfferID, Tier: checkoutsession.Tier(g.Tier), LineNos: g.LineNos, AmountMinor: g.AmountMinor}
+		out[i] = checkoutsession.Group{GroupNo: g.GroupNo, OfferID: g.OfferID, Tier: checkoutsession.Tier(g.Tier), LineNos: g.LineNos, AmountMinor: g.AmountMinor,
+			ConsolidationEligible: g.ConsolidationEligible, CapacityBand: checkoutsession.CapacityBand(g.CapacityBand)}
 	}
 	return out, nil
 }

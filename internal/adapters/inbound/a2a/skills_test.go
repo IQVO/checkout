@@ -26,12 +26,18 @@ var t0 = time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
 // aggregate (the same fixture the MCP tool tests read).
 func seededSessions(t *testing.T) ports.SessionRepository {
 	t.Helper()
+	return seededSessionsWith(t, cs.CartGroup{GroupNo: 1, OfferID: "o1", Tier: cs.TierNextDay, LineNos: []int{1}})
+}
+
+// seededSessionsWith is seededSessions with the given selected group of the cart.
+func seededSessionsWith(t *testing.T, group cs.CartGroup) ports.SessionRepository {
+	t.Helper()
 	store := memory.NewStore(memory.NewClock(t0))
 	s, err := cs.Open(cs.OpenInput{
 		ID: "sess-1", ShopperID: "shopper-1", ShipToAddressID: "addr-1",
 		Cart: cs.CartSnapshot{CartID: "cart-1", Version: 2, Ready: true,
 			Lines:  []cs.CartLine{{CatalogItemID: "A", Quantity: 2}},
-			Groups: []cs.CartGroup{{GroupNo: 1, OfferID: "o1", Tier: cs.TierNextDay, LineNos: []int{1}}}},
+			Groups: []cs.CartGroup{group}},
 		Offers: []cs.OfferStatus{{OfferID: "o1", Quoted: true, ExpiresAt: t0.Add(time.Hour)}},
 		Quote: cs.PriceQuote{QuoteID: "q1", Currency: "USD", Lines: []cs.QuoteLine{{CatalogItemID: "A", LineTotalMinor: 1000}},
 			Charges: []cs.QuoteCharge{{GroupNo: 1, ChargeMinor: 300}}, TaxMinor: 130, TotalMinor: 1430, ExpiresAt: t0.Add(15 * time.Minute)},
@@ -344,5 +350,25 @@ func TestSummarizeFlagsAnUnknownPlacementOutcome(t *testing.T) {
 	}
 	if got := summarize(sessionView{SessionID: "s", State: "COMPLETED", OrderID: "ord-9"}); !strings.Contains(got, "order ord-9") || strings.Contains(got, "unknown") {
 		t.Fatalf("summary = %q", got)
+	}
+}
+
+func TestAConsolidatedGroupCarriesItsOptionalFieldsAndAClassicOneDoesNot(t *testing.T) {
+	eligible := true
+	consolidated := cs.CartGroup{GroupNo: 1, OfferID: "o1", Tier: cs.TierConsolidated, LineNos: []int{1}, ConsolidationEligible: &eligible, CapacityBand: cs.BandTight}
+	ask := func(repo ports.SessionRepository) string {
+		w := newWire(t, repo)
+		reply := w.send(t, a2a.NewMessage(a2a.MessageRoleUser, a2a.NewDataPart(map[string]any{"skill": skillCheckoutSessionStatus, "arguments": map[string]any{"sessionId": "sess-1"}})))
+		raw, _ := json.Marshal(reply)
+		return string(raw)
+	}
+	body := ask(seededSessionsWith(t, consolidated))
+	for _, want := range []string{`"tier":"CONSOLIDATED"`, `"consolidationEligible":true`, `"capacityBand":"TIGHT"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("%s lacks %s", body, want)
+		}
+	}
+	if classic := ask(seededSessions(t)); strings.Contains(classic, "consolidationEligible") || strings.Contains(classic, "capacityBand") {
+		t.Fatalf("a classic group carries the optional fields: %s", classic)
 	}
 }

@@ -16,12 +16,19 @@ type Line struct {
 // Group is one shipment group of the session: the quote's groupNo, the
 // selected offer and tier, the lines it ships and the share of the quote total
 // that belongs to it (the allocation sent to customer-payments).
+//
+// ConsolidationEligible is set only for the tier CONSOLIDATED (nil otherwise;
+// never false by default) and CapacityBand is empty when the cart's offer had
+// none. Both are information the shopper's offer carried: neither is sent to
+// customer-ordering, pricing or customer-payments.
 type Group struct {
-	GroupNo     int
-	OfferID     string
-	Tier        Tier
-	LineNos     []int
-	AmountMinor int64
+	GroupNo               int
+	OfferID               string
+	Tier                  Tier
+	LineNos               []int
+	AmountMinor           int64
+	ConsolidationEligible *bool
+	CapacityBand          CapacityBand
 }
 
 // RequotedOffer is an offer customer-ordering proposed after a definitive 409.
@@ -78,9 +85,18 @@ func cloneGroups(in []Group) []Group {
 	out := make([]Group, len(in))
 	for i, g := range in {
 		g.LineNos = append([]int(nil), g.LineNos...)
+		g.ConsolidationEligible = cloneFlag(g.ConsolidationEligible)
 		out[i] = g
 	}
 	return out
+}
+
+func cloneFlag(p *bool) *bool {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
 }
 
 func clonePlacement(p *StoredPlacement) *StoredPlacement {

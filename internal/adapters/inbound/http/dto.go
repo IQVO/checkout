@@ -32,6 +32,9 @@ type groupOut struct {
 	Tier        string `json:"tier"`
 	LineNos     []int  `json:"lineNos"`
 	AmountMinor int64  `json:"amountMinor"`
+	// Optional: absent for every group whose offer carried neither (existing sessions stay byte-identical).
+	ConsolidationEligible *bool  `json:"consolidationEligible,omitempty"`
+	CapacityBand          string `json:"capacityBand,omitempty"`
 }
 
 type requotedOut struct {
@@ -75,7 +78,8 @@ func sessionBody(v views.Session) sessionOut {
 		out.Lines[i] = lineOut(l)
 	}
 	for i, g := range v.Groups {
-		out.Groups[i] = groupOut{GroupNo: g.GroupNo, OfferID: g.OfferID, Tier: string(g.Tier), LineNos: g.LineNos, AmountMinor: g.AmountMinor}
+		out.Groups[i] = groupOut{GroupNo: g.GroupNo, OfferID: g.OfferID, Tier: string(g.Tier), LineNos: g.LineNos, AmountMinor: g.AmountMinor,
+			ConsolidationEligible: g.ConsolidationEligible, CapacityBand: string(g.CapacityBand)}
 	}
 	if v.State == checkoutsession.StateRequoteRequired {
 		out.RequotedOffers = make([]requotedOut, len(v.RequotedOffers))

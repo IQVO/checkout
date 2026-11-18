@@ -41,11 +41,13 @@ type lineView struct {
 }
 
 type groupView struct {
-	GroupNo     int    `json:"groupNo"`
-	OfferID     string `json:"offerId"`
-	Tier        string `json:"tier"`
-	LineNos     []int  `json:"lineNos"`
-	AmountMinor int64  `json:"amountMinor"`
+	GroupNo               int    `json:"groupNo"`
+	OfferID               string `json:"offerId"`
+	Tier                  string `json:"tier"`
+	LineNos               []int  `json:"lineNos"`
+	AmountMinor           int64  `json:"amountMinor"`
+	ConsolidationEligible *bool  `json:"consolidationEligible,omitempty"`
+	CapacityBand          string `json:"capacityBand,omitempty"`
 }
 
 type requotedView struct {
@@ -88,7 +90,8 @@ func toSession(v views.Session) sessionView {
 		out.Lines[i] = lineView(l)
 	}
 	for i, g := range v.Groups {
-		out.Groups[i] = groupView{GroupNo: g.GroupNo, OfferID: g.OfferID, Tier: string(g.Tier), LineNos: g.LineNos, AmountMinor: g.AmountMinor}
+		out.Groups[i] = groupView{GroupNo: g.GroupNo, OfferID: g.OfferID, Tier: string(g.Tier), LineNos: g.LineNos, AmountMinor: g.AmountMinor,
+			ConsolidationEligible: g.ConsolidationEligible, CapacityBand: string(g.CapacityBand)}
 	}
 	for _, o := range v.RequotedOffers {
 		out.RequotedOffers = append(out.RequotedOffers, requotedView{OfferID: o.OfferID, GroupNo: o.GroupNo, Tier: string(o.Tier),

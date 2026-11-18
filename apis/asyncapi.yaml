@@ -325,7 +325,7 @@ components:
       description: RFC 3339 instant in UTC.
     Tier:
       type: string
-      enum: [SAME_DAY, NEXT_DAY, TWO_DAY, STANDARD]
+      enum: [SAME_DAY, NEXT_DAY, TWO_DAY, STANDARD, CONSOLIDATED]
     CheckoutOpenedEvent:
       type: object
       required: [specversion, id, source, type, subject, time, datacontenttype, dataschema, data]

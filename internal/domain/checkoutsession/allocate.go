@@ -40,19 +40,30 @@ func numberGroups(in []CartGroup, lineCount int) ([]Group, error) {
 	groups := make([]Group, len(in))
 	last := 0
 	for i, g := range in {
-		if g.GroupNo <= last || !shared.ValidID(g.OfferID) || !g.Tier.Valid() || len(g.LineNos) == 0 {
+		if g.GroupNo <= last || !shared.ValidID(g.OfferID) || !g.Tier.Valid() || len(g.LineNos) == 0 || !g.offerFieldsValid() {
 			return nil, contract("group %d is malformed or out of order", g.GroupNo)
 		}
 		last = g.GroupNo
 		if err := claimLines(g, lineCount, covered); err != nil {
 			return nil, err
 		}
-		groups[i] = Group{GroupNo: g.GroupNo, OfferID: g.OfferID, Tier: g.Tier, LineNos: append([]int(nil), g.LineNos...)}
+		groups[i] = Group{GroupNo: g.GroupNo, OfferID: g.OfferID, Tier: g.Tier, LineNos: append([]int(nil), g.LineNos...),
+			ConsolidationEligible: cloneFlag(g.ConsolidationEligible), CapacityBand: g.CapacityBand}
 	}
 	if len(covered) != lineCount {
 		return nil, contract("the groups cover %d of %d lines", len(covered), lineCount)
 	}
 	return groups, nil
+}
+
+// offerFieldsValid checks the optional fields of the selected offer:
+// consolidationEligible belongs to the CONSOLIDATED tier only, and a
+// capacityBand, when present, is a known band.
+func (g CartGroup) offerFieldsValid() bool {
+	if g.ConsolidationEligible != nil && g.Tier != TierConsolidated {
+		return false
+	}
+	return g.CapacityBand == "" || g.CapacityBand.Valid()
 }
 
 func claimLines(g CartGroup, lineCount int, covered map[int]bool) error {

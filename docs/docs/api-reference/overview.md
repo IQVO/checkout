@@ -42,7 +42,8 @@ spec lists the three session routes and not the two probes. See the
 - **Session state** is one of `OPEN`, `AUTHORIZING`, `DECLINED`, `PLACING`,
   `REQUOTE_REQUIRED`, `COMPLETED`, `EXPIRED`, `FAILED`. Money is an integer in
   minor units with an ISO currency; the delivery tier is `SAME_DAY`,
-  `NEXT_DAY`, `TWO_DAY` or `STANDARD`. `authorizationId`, `orderId` and
+  `NEXT_DAY`, `TWO_DAY`, `STANDARD` or `CONSOLIDATED` (a group may then carry the
+  optional `consolidationEligible` and `capacityBand`). `authorizationId`, `orderId` and
   `failureCode` are `null` until they exist; `requotedOffers` appears only on a
   `REQUOTE_REQUIRED` session. `version` grows by one per change.
 - **`Idempotency-Key`.** Required on both POST routes

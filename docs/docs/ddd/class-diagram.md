@@ -74,6 +74,8 @@ classDiagram
         +Tier Tier
         +LineNos int[]
         +AmountMinor int64
+        +ConsolidationEligible *bool
+        +CapacityBand CapacityBand
     }
     class RequotedOffer {
         <<ValueObject>>
@@ -108,8 +110,12 @@ session).
 
 `State` is the string enumeration of the eight states `OPEN`, `AUTHORIZING`,
 `DECLINED`, `PLACING`, `REQUOTE_REQUIRED`, `COMPLETED`, `EXPIRED` and `FAILED`;
-`Tier` is `SAME_DAY`, `NEXT_DAY`, `TWO_DAY` or `STANDARD`, re-declared locally
-(`session.go`): there is no shared kernel with `delivery-promise`.
+`Tier` is `SAME_DAY`, `NEXT_DAY`, `TWO_DAY`, `STANDARD` or the opt-in `CONSOLIDATED`,
+re-declared locally (`session.go`): there is no shared kernel with `delivery-promise`.
+A `Group` may also carry the optional `ConsolidationEligible` (`CONSOLIDATED` only) and
+`CapacityBand` (`AMPLE`, `TIGHT`, `SCARCE`) of the offer the cart selected; they are
+information, never sent to customer-ordering, pricing or customer-payments
+([ADR 0010](/docs/adr/0010-accept-the-consolidated-tier-and-the-capacity-band)).
 `RequotedOffer` carries its delivery bounds as `YYYY-MM-DD` strings. The
 `pendingToken` is kept only while `AUTHORIZING`. Bounds: at most 100 lines
 (`MaxLines`), quantity 1 to 99 (`MaxQuantity`). The domain errors

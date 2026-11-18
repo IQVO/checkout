@@ -17,12 +17,18 @@ var t0 = time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
 
 func seeded(t *testing.T) *sdk.ClientSession {
 	t.Helper()
+	return seededWith(t, cs.CartGroup{GroupNo: 1, OfferID: "o1", Tier: cs.TierNextDay, LineNos: []int{1}})
+}
+
+// seededWith is seeded with the given selected group of the cart.
+func seededWith(t *testing.T, group cs.CartGroup) *sdk.ClientSession {
+	t.Helper()
 	store := memory.NewStore(memory.NewClock(t0))
 	s, err := cs.Open(cs.OpenInput{
 		ID: "sess-1", ShopperID: "shopper-1", ShipToAddressID: "addr-1",
 		Cart: cs.CartSnapshot{CartID: "cart-1", Version: 2, Ready: true,
 			Lines:  []cs.CartLine{{CatalogItemID: "A", Quantity: 2}},
-			Groups: []cs.CartGroup{{GroupNo: 1, OfferID: "o1", Tier: cs.TierNextDay, LineNos: []int{1}}}},
+			Groups: []cs.CartGroup{group}},
 		Offers: []cs.OfferStatus{{OfferID: "o1", Quoted: true, ExpiresAt: t0.Add(time.Hour)}},
 		Quote: cs.PriceQuote{QuoteID: "q1", Currency: "USD", Lines: []cs.QuoteLine{{CatalogItemID: "A", LineTotalMinor: 1000}},
 			Charges: []cs.QuoteCharge{{GroupNo: 1, ChargeMinor: 300}}, TaxMinor: 130, TotalMinor: 1430, ExpiresAt: t0.Add(15 * time.Minute)},
@@ -106,5 +112,20 @@ func TestTheSurfaceIsOneReadOnlyTool(t *testing.T) {
 		if strings.Contains(tool.Name, verb) {
 			t.Fatalf("a write verb %q in tool %q", verb, tool.Name)
 		}
+	}
+}
+
+func TestAConsolidatedGroupCarriesItsOptionalFieldsAndAClassicOneDoesNot(t *testing.T) {
+	eligible := true
+	consolidated := cs.CartGroup{GroupNo: 1, OfferID: "o1", Tier: cs.TierConsolidated, LineNos: []int{1}, ConsolidationEligible: &eligible, CapacityBand: cs.BandTight}
+	body := text(call(t, seededWith(t, consolidated), "sess-1"))
+	for _, want := range []string{`"tier":"CONSOLIDATED"`, `"consolidationEligible":true`, `"capacityBand":"TIGHT"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("%s lacks %s", body, want)
+		}
+	}
+	classic := text(call(t, seeded(t), "sess-1"))
+	if strings.Contains(classic, "consolidationEligible") || strings.Contains(classic, "capacityBand") {
+		t.Fatalf("a classic group carries the optional fields: %s", classic)
 	}
 }
