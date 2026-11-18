@@ -85,12 +85,24 @@ func TestStateAndTierPredicates(t *testing.T) {
 	if closed != 4 || cs.State("X").Valid() {
 		t.Fatalf("closed = %d", closed)
 	}
-	for _, tier := range []cs.Tier{cs.TierSameDay, cs.TierNextDay, cs.TierTwoDay, cs.TierStandard} {
+	for _, tier := range []cs.Tier{cs.TierSameDay, cs.TierNextDay, cs.TierTwoDay, cs.TierStandard, cs.TierConsolidated} {
 		if !tier.Valid() {
 			t.Fatalf("%s", tier)
 		}
 	}
-	if cs.Tier("WEEKLY").Valid() {
-		t.Fatal("unknown tier")
+	for _, bad := range []cs.Tier{"WEEKLY", "", "consolidated"} {
+		if bad.Valid() {
+			t.Fatalf("unknown tier %q", bad)
+		}
+	}
+	for _, b := range []cs.CapacityBand{cs.BandAmple, cs.BandTight, cs.BandScarce} {
+		if !b.Valid() {
+			t.Fatalf("%s", b)
+		}
+	}
+	for _, bad := range []cs.CapacityBand{"", "FULL", "ample"} {
+		if bad.Valid() {
+			t.Fatalf("unknown band %q", bad)
+		}
 	}
 }

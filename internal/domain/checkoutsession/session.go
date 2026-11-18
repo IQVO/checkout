@@ -101,9 +101,29 @@ const (
 	TierNextDay  Tier = "NEXT_DAY"
 	TierTwoDay   Tier = "TWO_DAY"
 	TierStandard Tier = "STANDARD"
+	// TierConsolidated is delivery-promise's opt-in tier of a customer-chosen
+	// delivery day (its ADR 0024; customer-ordering ADR 0013).
+	TierConsolidated Tier = "CONSOLIDATED"
 )
 
-// Valid reports whether t is one of the four tiers.
+// Valid reports whether t is one of the five tiers.
 func (t Tier) Valid() bool {
-	return t == TierSameDay || t == TierNextDay || t == TierTwoDay || t == TierStandard
+	return t == TierSameDay || t == TierNextDay || t == TierTwoDay || t == TierStandard || t == TierConsolidated
+}
+
+// CapacityBand is delivery-promise's quote-time reading of the capacity
+// pressure on an offer's window (its ADR 0023). A signal only: it changes no
+// offer, window, order or amount.
+type CapacityBand string
+
+// The bands.
+const (
+	BandAmple  CapacityBand = "AMPLE"
+	BandTight  CapacityBand = "TIGHT"
+	BandScarce CapacityBand = "SCARCE"
+)
+
+// Valid reports whether b is one of the three bands.
+func (b CapacityBand) Valid() bool {
+	return b == BandAmple || b == BandTight || b == BandScarce
 }

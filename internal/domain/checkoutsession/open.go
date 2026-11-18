@@ -14,11 +14,16 @@ type CartLine struct {
 
 // CartGroup is a shipment group of the cart's delivery quote with the offer
 // the shopper selected for it.
+//
+// ConsolidationEligible and CapacityBand are the optional fields of the
+// selected offer (see Group); the cart carries them since its ADR 0010.
 type CartGroup struct {
-	GroupNo int
-	OfferID string
-	Tier    Tier
-	LineNos []int
+	GroupNo               int
+	OfferID               string
+	Tier                  Tier
+	LineNos               []int
+	ConsolidationEligible *bool
+	CapacityBand          CapacityBand
 }
 
 // CartSnapshot is what GetCart (shopping-cart) returned.

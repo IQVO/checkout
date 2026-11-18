@@ -328,7 +328,18 @@ components:
           description: The escaped request path.
     Tier:
       type: string
-      enum: [SAME_DAY, NEXT_DAY, TWO_DAY, STANDARD]
+      description: >-
+        Delivery service tier. CONSOLIDATED is delivery-promise's opt-in tier of a
+        customer-chosen delivery day; a session carries it only when the shopper
+        selected such an offer in the cart.
+      enum: [SAME_DAY, NEXT_DAY, TWO_DAY, STANDARD, CONSOLIDATED]
+    CapacityBand:
+      type: string
+      description: >-
+        The capacity pressure delivery-promise read on the selected offer's window
+        when it quoted it. A signal only: it changes no offer, window, order or
+        amount.
+      enum: [AMPLE, TIGHT, SCARCE]
     SessionState:
       type: string
       enum: [OPEN, AUTHORIZING, DECLINED, PLACING, REQUOTE_REQUIRED, COMPLETED, EXPIRED, FAILED]
@@ -382,6 +393,16 @@ components:
           type: integer
           format: int64
           minimum: 0
+        consolidationEligible:
+          type: boolean
+          description: >-
+            Present only for the tier CONSOLIDATED, as the cart's selected offer
+            carried it (delivery-promise ADR 0024): true when the chosen delivery
+            day leaves the network at least one local day to merge the order with
+            others. Omitted for every other tier and when the offer carried none.
+            Information only; it is not sent to customer-ordering.
+        capacityBand:
+          $ref: '#/components/schemas/CapacityBand'
     RequotedOffer:
       type: object
       required: [offerId, groupNo, tier, deliverByEarliest, deliverByLatest, expiresAt]

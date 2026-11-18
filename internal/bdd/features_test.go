@@ -107,4 +107,5 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerWorldAssertions(sc, w)
 	registerWave2(sc, w)
 	registerRuleSteps(sc, w)
+	registerConsolidated(sc, w)
 }
