@@ -279,9 +279,11 @@ paths:
       summary: Publish a new delivery charge schedule
       description: >-
         PublishChargeSchedule. A schedule names a charge (and optional
-        free-over threshold) for every service tier (SAME_DAY, NEXT_DAY,
-        TWO_DAY, STANDARD); the new version supersedes the current one and
-        DeliveryChargeScheduleChanged is published.
+        free-over threshold) for every classic service tier (SAME_DAY,
+        NEXT_DAY, TWO_DAY, STANDARD) and may name one for CONSOLIDATED, which
+        is free when the schedule does not declare it; the new version
+        supersedes the current one and DeliveryChargeScheduleChanged is
+        published.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -583,7 +585,11 @@ components:
           pattern: '^[A-Z]{3}$'
     Tier:
       type: string
-      enum: [SAME_DAY, NEXT_DAY, TWO_DAY, STANDARD]
+      description: >-
+        The delivery-promise service tier. CONSOLIDATED (opt-in) is a known
+        tier whose delivery charge is zero unless the current schedule declares
+        a row for it (ADR 0010).
+      enum: [SAME_DAY, NEXT_DAY, TWO_DAY, STANDARD, CONSOLIDATED]
     SaleWindow:
       type: object
       required: [saleId, price, from, to]
@@ -702,8 +708,8 @@ components:
           maximum: 2147483647
         tiers:
           type: array
-          description: Exactly one charge per tier; a missing tier is 422 incomplete-charge-schedule, a repeated or unknown tier 422 validation-failed.
-          maxItems: 4
+          description: Exactly one charge per classic tier and optionally one for CONSOLIDATED (free when omitted); a missing classic tier is 422 incomplete-charge-schedule, a repeated or unknown tier 422 validation-failed.
+          maxItems: 5
           items:
             $ref: '#/components/schemas/TierCharge'
     TaxBand:
