@@ -15,26 +15,19 @@ type ReplayEntry struct {
 	Class  string
 }
 
-// ReplayCatalogue lists every problem type of the adapter, once per slug.
+// ReplayCatalogue lists every problem type of the adapter (the registry
+// newProblem fills), one entry each.
 func ReplayCatalogue() []ReplayEntry {
-	var out []ReplayEntry
-	seen := map[string]bool{}
-	add := func(p problem) {
-		if !seen[p.slug] {
-			seen[p.slug] = true
-			out = append(out, ReplayEntry{Slug: p.slug, Status: p.status})
-		}
-	}
-	for _, e := range problemCatalogue {
-		add(e.p)
-	}
-	for _, p := range []problem{internalProblem, idempotencyKeyRequired, idempotencyKeyInvalid, idempotencyKeyReused, notFoundResource, dependencyUnavailable} {
-		add(p)
+	out := make([]ReplayEntry, 0, len(registry))
+	for _, p := range registry {
+		out = append(out, ReplayEntry{Slug: p.slug, Status: p.status, Class: string(p.class)})
 	}
 	return out
 }
 
-// RefuseForTest answers the problem type slug through the production writer.
+// RefuseForTest answers the problem type slug through the production writer:
+// through writeError (the catalogue's own mapping) when an error maps to it,
+// through writeProblem for the problems the adapter writes itself.
 func RefuseForTest(w http.ResponseWriter, r *http.Request, slug string) {
 	for _, e := range problemCatalogue {
 		if e.p.slug == slug {
@@ -42,7 +35,7 @@ func RefuseForTest(w http.ResponseWriter, r *http.Request, slug string) {
 			return
 		}
 	}
-	for _, p := range []problem{internalProblem, idempotencyKeyRequired, idempotencyKeyInvalid, idempotencyKeyReused, notFoundResource, dependencyUnavailable} {
+	for _, p := range registry {
 		if p.slug == slug {
 			writeProblem(w, r, p, "test")
 			return

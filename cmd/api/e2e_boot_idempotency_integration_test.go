@@ -82,11 +82,11 @@ func TestIdempotencyOverRealPostgres(t *testing.T) {
 			t.Fatalf("%d sessions, want %d", n, before+1)
 		}
 	})
-	t.Run("a 4xx answer is cached and replayed byte for byte", func(t *testing.T) {
-		const body = `{"cartId":"ghost","shopperId":"shopper-1","shipToAddressId":"addr-1"}`
-		first := svc.call(t, "POST", "/checkout-sessions", "k-422", body)
-		again := svc.call(t, "POST", "/checkout-sessions", "k-422", body)
-		if first.status != http.StatusUnprocessableEntity || again.status != first.status || again.body != first.body ||
+	t.Run("a FINAL refusal is cached and replayed byte for byte (a RETRYABLE one is not: see replay_classes)", func(t *testing.T) {
+		const body = `{"cartId":"ghost","shopperId":"shopper-1","shipToAddressId":"addr-1","bogus":1}`
+		first := svc.call(t, "POST", "/checkout-sessions", "k-400", body)
+		again := svc.call(t, "POST", "/checkout-sessions", "k-400", body)
+		if first.status != http.StatusBadRequest || again.status != first.status || again.body != first.body ||
 			first.header.Get("Idempotency-Replayed") != "" || again.header.Get("Idempotency-Replayed") != "true" {
 			t.Fatalf("first = %d %s (%v), again = %d %s (%v)", first.status, first.body, first.header, again.status, again.body, again.header)
 		}

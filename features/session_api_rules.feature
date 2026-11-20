@@ -32,16 +32,33 @@ Feature: The REST write rules of the Checkout documentation
     And the response field "sessionId" is sess-2
     And 2 sessions are stored
 
-  Scenario: An error answer below 500 is stored too, so the same request replays it even after the cause is gone
+  Scenario: A refusal that is a function of the request alone is stored and replayed
+    When I POST "/checkout-sessions" with key "open-2" and body {"cartId":"cart-1","bogus":1}
+    Then the API answers 400
+    And the problem type is "malformed-request"
+    When I POST "/checkout-sessions" with key "open-2" and body {"cartId":"cart-1","bogus":1}
+    Then the API answers 400
+    And the answer is a replay
+
+  Scenario: A refusal whose cause can go away is not stored, so the same request runs again once it is gone
     Given a cart that is not checkout ready
-    When I POST "/checkout-sessions" with key "open-2" and body {"cartId":"cart-1","shopperId":"shopper-1","shipToAddressId":"addr-1"}
+    When I POST "/checkout-sessions" with key "open-4" and body {"cartId":"cart-1","shopperId":"shopper-1","shipToAddressId":"addr-1"}
     Then the API answers 409
     And the problem type is "cart-not-checkout-ready"
     Given a checkout-ready cart with 2 lines in 2 groups
-    When I POST "/checkout-sessions" with key "open-2" and body {"cartId":"cart-1","shopperId":"shopper-1","shipToAddressId":"addr-1"}
+    When I POST "/checkout-sessions" with key "open-4" and body {"cartId":"cart-1","shopperId":"shopper-1","shipToAddressId":"addr-1"}
+    Then the API answers 201
+    And the answer is not a replay
+    And 1 sessions are stored
+
+  Scenario: A released key is free: another request under it is a new request, not a key reuse
+    Given a cart that is not checkout ready
+    When I POST "/checkout-sessions" with key "open-5" and body {"cartId":"cart-1","shopperId":"shopper-1","shipToAddressId":"addr-1"}
     Then the API answers 409
-    And the answer is a replay
-    And no session was stored
+    Given a checkout-ready cart with 2 lines in 2 groups
+    When I POST "/checkout-sessions" with key "open-5" and body {"cartId":"cart-1","shopperId":"shopper-2","shipToAddressId":"addr-1"}
+    Then the API answers 201
+    And the answer is not a replay
 
   Scenario: A NUL character in a body is a malformed request that does not burn its Idempotency-Key
     When I POST "/checkout-sessions" with key "open-3" and body {"cartId":"cart\u00001","shopperId":"shopper-1","shipToAddressId":"addr-1"}

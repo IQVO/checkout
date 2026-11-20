@@ -47,7 +47,7 @@ func (wallClock) Now() time.Time { return time.Now() }
 // here. These tests pin the invariant through the public middleware so a
 // future change that joins the two transactions fails loudly:
 //
-//	a mapped 4xx over an aborted transaction is still recorded and returned;
+//	a FINAL 4xx over an aborted transaction is still recorded and returned;
 //	a 2xx over an aborted transaction is never returned or cached.
 
 const insertOutbox = `INSERT INTO outbox_events (event_id, topic, event_type, subject, key, dataschema, value)
@@ -90,8 +90,8 @@ func count(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) int {
 }
 
 // TestIdempotency_A409OverAnAbortedTransactionIsRecordedAndReplayed: a lost
-// race on a unique index answers 409, not 500, the 409 is stored, and a retry
-// replays it without re-running the handler.
+// race on a unique index answers a FINAL 409 (session-closed), not 500, the 409
+// is stored, and a retry replays it without re-running the handler.
 func TestIdempotency_A409OverAnAbortedTransactionIsRecordedAndReplayed(t *testing.T) {
 	pool := pgtest.NewPool(t)
 	var calls atomic.Int64
@@ -100,9 +100,8 @@ func TestIdempotency_A409OverAnAbortedTransactionIsRecordedAndReplayed(t *testin
 		if err := poison(r, pool, false); err == nil {
 			t.Error("the poisoned unit of work must fail")
 		}
-		w.Header().Set("Content-Type", "application/problem+json")
-		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write([]byte(`{"type":"/problems/session-closed","title":"Conflict","status":409}`))
+		// Through the production writer: session-closed is FINAL, so it is stored.
+		httpadapter.RefuseForTest(w, r, "session-closed")
 	})
 	mw := httpadapter.RequireIdempotencyKey(postgres.NewIdempotencyStore(pool), wallClock{})(handler)
 

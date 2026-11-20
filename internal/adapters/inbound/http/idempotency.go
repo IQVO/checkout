@@ -28,14 +28,21 @@ const maxKeyLength = 128
 // RequireIdempotencyKey is the Idempotency-Key middleware of every POST route
 // (REST API guideline section 2). The key is global to the service: the stored
 // record is looked up by the key alone and compared by fingerprint (method +
-// path + sha256 of the body). The first response below 500 for a key is stored
-// for 24 hours (idempotency.TTL); the same key and fingerprint replays it with
-// Idempotency-Replayed: true, the same key with another fingerprint is 409
-// idempotency-key-reused. A 5xx is never stored, so the key can retry the real
-// work. Requests that carry the same key are serialised inside the process, so
-// N concurrent identical requests run the command once and the others replay
-// its answer; across replicas the store keeps the first record and the loser
-// replays it.
+// path + sha256 of the body). A 2xx answer is stored for 24 hours
+// (idempotency.TTL), and so is a refusal whose problem type is FINAL or OUTCOME
+// (ADR 0011: the class is declared on the catalogue entry and marked on the
+// capture by writeProblem; this middleware holds no slug list). The same key
+// and fingerprint replays the stored answer with Idempotency-Replayed: true,
+// the same key with another fingerprint is 409 idempotency-key-reused.
+//
+// A 5xx, a panic, a RETRYABLE refusal and a refusal with no class are never
+// stored: nothing is claimed beforehand, so skipping the write IS the release,
+// the same key runs the real work again, and another request under it is a new
+// request. Requests that carry the same key are serialised inside the process:
+// a duplicate waits, finds nothing stored after a released first and runs the
+// command itself; after a stored first, N concurrent identical requests run the
+// command once and the others replay its answer. Across replicas both may
+// execute and the store keeps the first record (the loser replays it).
 //
 // Build ONE middleware for the router and share it between the routes: the key
 // locks live in the returned closure.
@@ -79,25 +86,32 @@ func serve(w http.ResponseWriter, r *http.Request, next http.Handler, store port
 	}
 	out := &capture{header: http.Header{}}
 	next.ServeHTTP(out, r)
-	if out.status() < http.StatusInternalServerError {
-		stored := idempotency.Record{
-			RequestHash: hash, Status: out.status(), ContentType: out.header.Get("Content-Type"),
-			Body: out.body.Bytes(), CreatedAt: clock.Now().UTC().Truncate(time.Microsecond),
-		}
-		won, err := store.Put(r.Context(), key, stored)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		if !won {
-			// Another replica stored a record for this key first: answer with it.
-			if first, err := store.Get(r.Context(), key); err == nil {
-				replay(w, r, first, hash)
-				return
-			}
-		}
+	if out.storable() && !remember(w, r, store, clock, key, hash, out) {
+		return
 	}
 	out.flushTo(w)
+}
+
+// remember stores the captured answer under key. It reports false when it
+// already answered the client: the store failed, or another replica stored a
+// record for the key first and that one is replayed.
+func remember(w http.ResponseWriter, r *http.Request, store ports.IdempotencyStore, clock ports.Clock, key, hash string, out *capture) bool {
+	stored := idempotency.Record{
+		RequestHash: hash, Status: out.status(), ContentType: out.header.Get("Content-Type"),
+		Body: out.body.Bytes(), CreatedAt: clock.Now().UTC().Truncate(time.Microsecond),
+	}
+	won, err := store.Put(r.Context(), key, stored)
+	if err != nil {
+		writeError(w, r, err)
+		return false
+	}
+	if !won {
+		if first, err := store.Get(r.Context(), key); err == nil {
+			replay(w, r, first, hash)
+			return false
+		}
+	}
+	return true
 }
 
 // validKey reports whether key is 1 to 128 printable ASCII characters.
@@ -174,6 +188,26 @@ type capture struct {
 	header http.Header
 	code   int
 	body   bytes.Buffer
+	// class is the replay class the error writer marked; empty when the handler
+	// answered without a problem (or with one that declares none).
+	class replayClass
+}
+
+// MarkReplay implements replayMarker.
+func (c *capture) MarkReplay(class replayClass) { c.class = class }
+
+// storable reports whether the answer is stored under the key: a 2xx, or a
+// refusal that is FINAL or OUTCOME. A 5xx is never stored, and a refusal that
+// is RETRYABLE or has no class is released (nothing is written, so a retry
+// under the key executes).
+func (c *capture) storable() bool {
+	switch status := c.status(); {
+	case status >= http.StatusInternalServerError:
+		return false
+	case status >= http.StatusOK && status < http.StatusMultipleChoices:
+		return true
+	}
+	return c.class == replayFinal || c.class == replayOutcome
 }
 
 func (c *capture) Header() http.Header { return c.header }
