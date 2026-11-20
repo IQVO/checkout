@@ -74,6 +74,14 @@ type PlaceOutcome struct {
 	OrderID string
 	Offers  []checkoutsession.RequotedOffer
 	Detail  string
+	// Slug is the problem type of a refusal ("" for an order or an unreadable body).
+	Slug string
+	// Released is true for a refusal customer-ordering does NOT store (replay
+	// class RETRYABLE, ADR 0011): its Idempotency-Key is free, so the same
+	// request under the same key may pass later. Kind keeps the terminal
+	// reading the refusal had before the rule (requote or rejection); the
+	// session applies it only once the in-doubt budget is spent.
+	Released bool
 }
 
 // OrderPlacer is customer-ordering PlaceOrder (REST POST /checkout) behind the
