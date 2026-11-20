@@ -83,3 +83,10 @@ and checkout exposes no list.
   the stored answer; the retry then re-executes against the new state (for a confirm that is an
   `illegal-transition` or `session-closed` 409, never a second authorization, because the downstream keys are
   derived from the session id).
+
+## Update 2026-11-19
+
+[ADR 0011](/docs/adr/0011-every-problem-type-has-a-replay-class) supersedes one sentence of item 2: "A 2xx or
+4xx answer is stored for 24 hours" now reads "a 2xx answer and a refusal whose problem type is FINAL or
+OUTCOME are stored; a RETRYABLE refusal and a 5xx are not, and their key is released". The Decision text above is
+unchanged.
