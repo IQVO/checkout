@@ -17,9 +17,11 @@ info:
     problem types are not-found (404), illegal-transition (409),
     concurrent-update (409) and validation-failed (422); each Err of the model
     adds one kebab-case slug. Every POST takes an Idempotency-Key header
-    (PUT needs none); a key reused with a different request is 409
-    idempotency-key-reused. Collections are keyset-paged with limit and cursor
-    and answer { items, nextCursor }.
+    (PUT needs none); the first answer final for the request is stored and
+    replayed (a 2xx and the final refusals), a retryable refusal releases the
+    key so the retry executes again, and a key reused with a different request
+    is 409 idempotency-key-reused. Collections are keyset-paged with limit and
+    cursor and answer { items, nextCursor }.
     No authentication, consistent with the rest of the estate.
 servers:
   - url: http://localhost:8080
@@ -471,10 +473,17 @@ components:
       description: >-
         1-128 printable ASCII characters, a client-generated UUID per logical
         submit (a retry reuses it). A repeated key with the same method, path
-        and body returns the stored response (any status below 500, a 4xx too,
-        kept 24 hours) with Idempotency-Replayed: true; with a different
-        method, path or body it is 409 idempotency-key-reused. A 5xx is never
-        stored, so the key can retry.
+        and body returns the stored response (a 2xx, kept 24 hours; of the
+        refusals, the final ones: malformed-request, non-increasing-version,
+        incomplete-charge-schedule, overlapping-tax-band, rate-out-of-range,
+        empty-quote, negative-amount, currency-mismatch) with
+        Idempotency-Replayed: true; a retryable refusal (concurrent-update,
+        not-found, illegal-transition, overlapping-sale-window,
+        unknown-catalog-item, sale-not-below-list, item-not-priced,
+        no-charge-schedule, no-tax-table, validation-failed) is not stored and
+        its key is released, so the retry executes again; with a different
+        method, path or body under a stored answer it is 409
+        idempotency-key-reused. A 5xx is never stored, so the key can retry.
         Missing is 400 idempotency-key-required; malformed is 400
         idempotency-key-invalid.
       schema:
