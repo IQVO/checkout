@@ -24,8 +24,15 @@ info:
     model, and the idempotency problems idempotency-key-required and
     idempotency-key-invalid (400) and idempotency-key-reused (409). Every POST takes
     an Idempotency-Key header: a retry with the same key and the same request replays
-    the first answer (Idempotency-Replayed: true), the same key with another request is
-    409 idempotency-key-reused. PUT and DELETE are idempotent by method. GET /carts
+    the stored answer (Idempotency-Replayed: true). A 2xx is stored for 24 hours, and
+    so is a refusal that is final for the request (malformed-request,
+    quantity-out-of-range, validation-failed, cart-closed); a refusal that depends on
+    state that can change (not-found, concurrent-update, stale-delivery-selection,
+    item-not-purchasable, too-many-lines, no-destination, merge-target,
+    illegal-transition) and a 5xx are never stored: the key is released, the same
+    Idempotency-Key runs the request again, and another request under it is a new
+    request. Otherwise the same key with another request is 409
+    idempotency-key-reused. PUT and DELETE are idempotent by method. GET /carts
     is keyset-paged ({items, nextCursor}; invalid-limit, invalid-cursor and unknown-query-parameter are 400).
     No authentication; shopperId is optional (guest-first).
 servers:
@@ -175,13 +182,13 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: cart-closed (ErrCartClosed), concurrent-update or idempotency-key-reused (the Idempotency-Key was already used with a different request).
+          description: cart-closed (ErrCartClosed; stored and replayed - a closed cart never changes) or concurrent-update (not stored; the key is released and the same Idempotency-Key runs again). Or idempotency-key-reused (the Idempotency-Key was already used with a different request).
           content:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: validation-failed, quantity-out-of-range (ErrQuantityOutOfRange), too-many-lines (ErrTooManyLines) or item-not-purchasable (ErrItemNotPurchasable).
+          description: validation-failed or quantity-out-of-range (ErrQuantityOutOfRange; both stored and replayed - the request alone decides) or too-many-lines (ErrTooManyLines) or item-not-purchasable (ErrItemNotPurchasable; neither stored - the line count and the purchasability view can change, the key is released and the same Idempotency-Key runs again).
           content:
             application/problem+json:
               schema:
@@ -339,19 +346,19 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: cart-closed (ErrCartClosed), concurrent-update or idempotency-key-reused (the Idempotency-Key was already used with a different request).
+          description: cart-closed (ErrCartClosed; stored and replayed - a closed cart never changes) or concurrent-update (not stored; the key is released and the same Idempotency-Key runs again). Or idempotency-key-reused (the Idempotency-Key was already used with a different request).
           content:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: no-destination (ErrNoDestination) or validation-failed.
+          description: no-destination (ErrNoDestination; not stored - the destination is set by another request, the key is released and the same Idempotency-Key runs again) or validation-failed (stored and replayed).
           content:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '503':
-          description: delivery-promise unreachable or timed out (delivery-promise-unavailable). Retry with the same Idempotency-Key.
+          description: delivery-promise unreachable or timed out (delivery-promise-unavailable). Retry with the same Idempotency-Key (a 5xx is never stored).
           content:
             application/problem+json:
               schema:
@@ -437,13 +444,13 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: cart-closed (ErrCartClosed), concurrent-update or idempotency-key-reused (the Idempotency-Key was already used with a different request).
+          description: cart-closed (ErrCartClosed; stored and replayed - a closed cart never changes) or concurrent-update (not stored; the key is released and the same Idempotency-Key runs again). Or idempotency-key-reused (the Idempotency-Key was already used with a different request).
           content:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: merge-target (ErrMergeTarget) or validation-failed.
+          description: merge-target (ErrMergeTarget; not stored - the key is released and the same Idempotency-Key runs again) or validation-failed (stored and replayed).
           content:
             application/problem+json:
               schema:
@@ -496,13 +503,13 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: cart-closed (ErrCartClosed), concurrent-update or idempotency-key-reused (the Idempotency-Key was already used with a different request).
+          description: cart-closed (ErrCartClosed; stored and replayed - a closed cart never changes) or concurrent-update (not stored; the key is released and the same Idempotency-Key runs again). Or idempotency-key-reused (the Idempotency-Key was already used with a different request).
           content:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: validation-failed (empty set, two offers for one group, a repeated offerId, an invalid tier or timestamp).
+          description: validation-failed (empty set, two offers for one group, a repeated offerId, an invalid tier or timestamp; stored and replayed - the request alone decides).
           content:
             application/problem+json:
               schema:
@@ -519,7 +526,15 @@ components:
         Client-generated UUID per logical submit (1 to 128 printable ASCII
         characters); a retry reuses it. The same key with the same request
         (method, path, body) replays the stored answer with
-        Idempotency-Replayed: true; the same key with another request is 409
+        Idempotency-Replayed: true. A 2xx is stored for 24 hours, and so is a
+        refusal that is final for the request (malformed-request,
+        quantity-out-of-range, validation-failed, cart-closed); a refusal that
+        depends on state that can change (not-found, concurrent-update,
+        stale-delivery-selection, item-not-purchasable, too-many-lines,
+        no-destination, merge-target, illegal-transition) and a 5xx are not
+        stored: the key is released and the same key runs the request again, and
+        another request under a released key is a new request. The same key with
+        another request while an answer is stored is 409
         idempotency-key-reused. Missing is 400 idempotency-key-required.
       schema:
         type: string
@@ -556,19 +571,19 @@ components:
         type: string
   headers:
     IdempotencyReplayed:
-      description: '"true" when the answer is the stored response of an earlier request with the same Idempotency-Key (a stored 4xx problem is replayed with it too; only answers below 500 are stored); absent on the first execution.'
+      description: '"true" when the answer is the stored response of an earlier request with the same Idempotency-Key (a 2xx, or a refusal that is final for the request; a retryable refusal and a 5xx are never stored - the key is released); absent on the first execution.'
       schema:
         type: string
         enum: ['true']
   responses:
     NotFound:
-      description: not-found (no such cart or line, or an identifier over 128 characters) or resource-not-found (a NUL character in the path).
+      description: not-found (no such cart or line, or an identifier over 128 characters; on a write it is not stored - the key is released and the same Idempotency-Key runs again, a cart or line can appear later) or resource-not-found (a NUL character in the path).
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
     Unprocessable:
-      description: validation-failed.
+      description: validation-failed (on a write it is stored and replayed; the request alone decides).
       content:
         application/problem+json:
           schema:
