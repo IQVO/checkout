@@ -31,7 +31,9 @@ conflict re-runs the command once, then answers `409 concurrent-update`).
 **No outbound call sits inside a database transaction**: the use case commits
 the state it acts from, calls out, then commits the outcome. The
 `Idempotency-Key` record is written by the HTTP middleware after the use case
-returned, not inside its transaction, and a 5xx is never stored. Full CloudEvents
+returned, not inside its transaction. A 2xx and a FINAL or OUTCOME refusal are
+stored; a 5xx and a RETRYABLE refusal are not, and the key is released
+([ADR 0011](/docs/adr/0011-every-problem-type-has-a-replay-class)). Full CloudEvents
 types are on [Domain Events](/docs/ddd/domain-events).
 
 ## 1. OpenSession (REST POST /checkout-sessions)

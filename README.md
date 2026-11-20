@@ -192,10 +192,15 @@ are RFC 9457 problem details (`application/problem+json`) whose `type` is
 `POST` takes an `Idempotency-Key` header (1-128 printable ASCII characters, a
 UUID per logical submit; global to the service, not per route). A retry with
 the same key, method, path and body replays the stored answer with
-`Idempotency-Replayed: true`; the same key with another request is
+`Idempotency-Replayed: true` when it was a 2xx or a refusal that is final for the
+request or committed state; a refusal a retry can pass (`concurrent-update`,
+`cart-not-checkout-ready`, `not-found`, `validation-failed`, ...) and every 5xx is
+not stored, the key is released and the same request runs again. The same key
+with another request whose answer was stored is
 `409 idempotency-key-reused`, an absent or malformed key is `400`
 `idempotency-key-required` / `idempotency-key-invalid`
-([ADR 0009](docs/adr/0009-adopt-the-fleet-rest-api-guideline.md)). A retry of a
+([ADR 0009](docs/adr/0009-adopt-the-fleet-rest-api-guideline.md), the replay class of
+every problem type: [ADR 0011](docs/adr/0011-every-problem-type-has-a-replay-class.md)). A retry of a
 confirm also replays the stored placement request byte for byte (alert at 20 h,
 give up and void at 22 h, inside the network's 24 h idempotency window).
 

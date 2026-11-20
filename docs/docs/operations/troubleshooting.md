@@ -96,14 +96,14 @@ named here is listed in [Observability](/docs/operations/observability).
 | `400` `idempotency-key-invalid` | the `Idempotency-Key` is longer than 128 characters or has a character outside printable ASCII | mint a UUID per logical submit |
 | `400` `malformed-request` | invalid JSON, an unknown field, trailing data, an empty body or a body over 64 KiB; also a NUL (U+0000) in the path, query or body | the `detail` names the decoder error; the schemas are strict (`DisallowUnknownFields`) |
 | `404` `not-found` | no such session, or a `{sessionId}` longer than 128 characters | the id is `sess-...` from the open answer |
-| `409` `cart-not-checkout-ready` | the cart is not `OPEN` or its `checkoutReadiness` is false (a group is unselected or an offer expired) | fix the cart in shopping-cart, then open again |
+| `409` `cart-not-checkout-ready` | the cart is not `OPEN` or its `checkoutReadiness` is false (a group is unselected or an offer expired) | fix the cart in shopping-cart, then open again (the same key is fine: RETRYABLE, not stored) |
 | `409` `session-closed` | the session is `COMPLETED`, `EXPIRED`, `FAILED` or `REQUOTE_REQUIRED` | those never change; open a new session. `DECLINED` is not closed: confirm again with another token |
 | `409` `placement-in-doubt` | the session is `PLACING`: the place-order outcome is unknown, there is no void and no new attempt | poll `GET /checkout-sessions/{sessionId}`; `ResolveInDoubtPlacements` settles it |
 | `409` `void-pending` | a previous authorization of this session is still owed a void | retry shortly; `RetryOwedVoids` runs every minute |
 | `409` `authorization-mismatch` | customer-payments authorized an amount or currency that is not the quote total; the session returned to `DECLINED` and the authorization is being voided | ALERT `authorization-mismatch`; investigate customer-payments |
 | `409` `illegal-transition` | the command does not apply in the session's current state (for example a confirm while `AUTHORIZING`) | wait for the stuck-authorization policy or poll |
 | `409` `idempotency-key-reused` | the same `Idempotency-Key` with a different method, path or body (the key is global, not per route) | mint a fresh key, or keep the body byte-stable; never retry blindly |
-| `409` `concurrent-update` | another writer got in between load and save twice (each command retries once) | retry with the same key |
+| `409` `concurrent-update` | another writer got in between load and save twice (each command retries once) | retry with the same key: a RETRYABLE refusal is not stored, so the retry runs again |
 | `422` `validation-failed` | `cartId`, `shopperId` or `shipToAddressId` missing, an invalid id or token, or the cart does not exist (shopping-cart answered 404) | the `detail` names the field |
 | `422` `price-quote-expired` | the binding quote has expired at confirm | open a new session |
 | `422` `offer-not-quotable` | at open, a selected delivery offer is not `QUOTED` or expires within 2 minutes | refresh the delivery quote in the cart and open again |

@@ -21,7 +21,11 @@ agent, not generated: keep it manually accurate.
 - Error shape: RFC 9457 `application/problem+json`, `type` = `/problems/<slug>`
   (catalogue in `errors.go`); every POST needs an `Idempotency-Key` (missing = 400
   `idempotency-key-required`, same key with another body = 409
-  `idempotency-key-reused`, replay marked `Idempotency-Replayed: true`); a NUL in the
+  `idempotency-key-reused`, replay marked `Idempotency-Replayed: true`); a 2xx and a
+  FINAL or OUTCOME refusal are stored, a RETRYABLE refusal and a 5xx are not (the key is
+  released, a retry runs again); every problem type declares its replay class on its
+  catalogue entry in `errors.go` and a new one without a class fails
+  `TestEveryProblemTypeDeclaresAReplayClass` (ADR 0011); a NUL in the
   path, query or body is a 400 before any key is recorded.
 - Auth: none. Fleet-wide auth was deliberately reverted 2026-09-11; do not add
   bearer/JWT/API-key middleware (`TestNoAuthMiddlewareReintroduced`).

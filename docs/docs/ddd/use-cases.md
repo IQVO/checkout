@@ -119,7 +119,10 @@ answered; they have no route of their own and are described as steps below.
 | timeout, transport error, 5xx, a retriable 409, an answer without an `orderId` | `RecordPlacementInDoubt` | `PLACING` | 202 | `CheckoutPlacementInDoubt` (first time only) |
 
 - **Idempotency:** the `Idempotency-Key` middleware replays the stored first
-  response; downstream keys are deterministic: `<sessionId>:auth:<attempt>`,
+  response when it was a 2xx or a FINAL or OUTCOME refusal (a RETRYABLE refusal
+  and a 5xx release the key, [ADR 0011](/docs/adr/0011-every-problem-type-has-a-replay-class);
+  `authorization-mismatch` is the OUTCOME: the session is saved DECLINED before
+  the answer, and a replay authorizes nothing again); downstream keys are deterministic: `<sessionId>:auth:<attempt>`,
   the sessionId for the place-order call and `<sessionId>:void`. A confirm after
   a decline is a new attempt (counter plus one), so it is not answered with the
   first declined response, while a stuck call replays the same key.

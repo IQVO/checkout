@@ -46,7 +46,9 @@ func decodeJSON(r *http.Request, dest any) error {
 }
 
 // writeError writes err as its RFC 9457 problem. An unmapped error is a 500
-// whose detail never leaks the internal message (it is logged instead).
+// whose detail never leaks the internal message (it is logged instead). The
+// replay class of the problem reaches the Idempotency-Key middleware through
+// writeProblem.
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	p := problemFor(err)
 	detail := err.Error()
@@ -54,11 +56,21 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 		slog.ErrorContext(r.Context(), "request failed", "error", sanitizeLog(err.Error()), "method", r.Method, "path", sanitizeLog(r.URL.Path))
 		detail = "an unexpected error occurred"
 	}
-	writeBody(w, p.status, problemBody(r, p, detail))
+	writeProblem(w, r, p, detail)
 }
 
-// writeProblem writes p with an explicit detail.
+// replayMarker is implemented by the capturing writer of the Idempotency-Key
+// middleware: the error writer tells it the replay class of the answer, and the
+// middleware decides from that what to do with it.
+type replayMarker interface{ MarkReplay(replayClass) }
+
+// writeProblem writes p with an explicit detail and marks the capturing writer
+// (if any) with the replay class of p. Every problem leaves through here, so a
+// problem cannot be answered without its class being declared.
 func writeProblem(w http.ResponseWriter, r *http.Request, p problem, detail string) {
+	if m, ok := w.(replayMarker); ok {
+		m.MarkReplay(p.class)
+	}
 	writeBody(w, p.status, problemBody(r, p, detail))
 }
 

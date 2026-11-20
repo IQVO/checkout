@@ -131,6 +131,17 @@ Feature: The ConfirmSession rules of the Checkout documentation
       | customer-payments authorizes one minor unit too little |
       | customer-payments authorizes in "EUR"               |
 
+  Scenario: A replayed confirm of an authorization mismatch returns the stored refusal and commits nothing twice
+    Given customer-payments authorizes one minor unit too much
+    When I POST "/checkout-sessions/sess-1/confirmations" with key "c1" and body {"paymentMethodToken":"tok_1"}
+    And I POST "/checkout-sessions/sess-1/confirmations" with key "c1" and body {"paymentMethodToken":"tok_1"}
+    Then the API answers 409
+    And the problem type is "authorization-mismatch"
+    And the answer is a replay
+    And customer-payments received 1 authorization call
+    And 1 void was attempted
+    And the events published are "CheckoutOpened, CheckoutDeclined"
+
   Scenario: After a mismatch the shopper confirms again as a new attempt and the first authorization stays voided
     Given customer-payments authorizes one minor unit too much
     And I confirm the session with token "tok_1"

@@ -62,15 +62,27 @@ func TestIdempotencyReplaysTheConfirmAnswer(t *testing.T) {
 	e.wantProblem(e.do(http.MethodPost, "/checkout-sessions/sess-1/confirmations", "c1", `{"paymentMethodToken":"tok_2"}`), http.StatusConflict, "idempotency-key-reused")
 }
 
-func TestIdempotencyRecordsClientErrorsNotServerErrors(t *testing.T) {
+func TestIdempotencyRecordsFinalRefusalsNotRetryableOnesNorServerErrors(t *testing.T) {
 	e := newEnv(t)
-	bad := e.do(http.MethodPost, "/checkout-sessions", "k2", `{"cartId":"","shopperId":"s","shipToAddressId":"a"}`)
-	e.wantStatus(bad, http.StatusUnprocessableEntity)
-	again := e.do(http.MethodPost, "/checkout-sessions", "k2", `{"cartId":"","shopperId":"s","shipToAddressId":"a"}`)
-	e.wantStatus(again, http.StatusUnprocessableEntity)
+	// malformed-request is FINAL: stored and replayed.
+	const malformed = `{"cartId":"cart-1","bogus":1}`
+	e.wantStatus(e.do(http.MethodPost, "/checkout-sessions", "k2", malformed), http.StatusBadRequest)
+	again := e.do(http.MethodPost, "/checkout-sessions", "k2", malformed)
+	e.wantStatus(again, http.StatusBadRequest)
 	if again.Header.Get("Idempotency-Replayed") != "true" {
-		t.Fatal("a client error is stored under its key")
+		t.Fatal("a FINAL refusal is stored under its key")
 	}
+
+	// validation-failed is RETRYABLE (a mixed slug): released, so the same key
+	// runs again and another body under it is a new request, not a reuse.
+	const invalid = `{"cartId":"","shopperId":"s","shipToAddressId":"a"}`
+	e.wantProblem(e.do(http.MethodPost, "/checkout-sessions", "k4", invalid), http.StatusUnprocessableEntity, "validation-failed")
+	second := e.do(http.MethodPost, "/checkout-sessions", "k4", invalid)
+	e.wantProblem(second, http.StatusUnprocessableEntity, "validation-failed")
+	if second.Header.Get("Idempotency-Replayed") != "" {
+		t.Fatal("a RETRYABLE refusal is not stored, so its retry is not a replay")
+	}
+	e.wantStatus(e.do(http.MethodPost, "/checkout-sessions", "k4", openBody), http.StatusCreated)
 
 	// A 5xx is never stored: the retry with the same key runs the command again.
 	e.carts.Err = ports.ErrShoppingCartUnavailable

@@ -56,6 +56,8 @@ type siblings struct {
 	mu          sync.Mutex
 	placeStatus int
 	cartDown    bool
+	cartState   cartState
+	authDelta   int64
 	calls       []string
 	checkoutKey []string
 }
@@ -71,6 +73,32 @@ func (s *siblings) setCartDown(down bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cartDown = down
+}
+
+// cartState is what shopping-cart answers for cart-1: the zero value is a
+// ready cart.
+type cartState int
+
+const (
+	cartReady cartState = iota
+	cartNotReady
+	cartUnknown
+)
+
+// setCart selects what GET /carts/cart-1 answers: a ready cart, a cart that is
+// not checkout ready, or a 404 (a cart shopping-cart does not know yet).
+func (s *siblings) setCart(state cartState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cartState = state
+}
+
+// setAuthDelta makes customer-payments authorize delta minor units more than
+// the total it was asked for (an authorization that is not the quote total).
+func (s *siblings) setAuthDelta(delta int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.authDelta = delta
 }
 
 func (s *siblings) called(prefix string) int {
@@ -96,7 +124,7 @@ func fakeSiblings(t *testing.T) *siblings {
 func (s *siblings) serve(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.calls = append(s.calls, r.Method+" "+r.URL.Path)
-	status, down := s.placeStatus, s.cartDown
+	status, down, cart, delta := s.placeStatus, s.cartDown, s.cartState, s.authDelta
 	if r.URL.Path == "/checkout" {
 		s.checkoutKey = append(s.checkoutKey, r.Header.Get("Idempotency-Key"))
 	}
@@ -106,6 +134,10 @@ func (s *siblings) serve(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case down && r.Method == http.MethodGet && r.URL.Path == "/carts/cart-1":
 		w.WriteHeader(http.StatusServiceUnavailable)
+	case r.Method == http.MethodGet && r.URL.Path == "/carts/cart-1" && cart == cartUnknown:
+		w.WriteHeader(http.StatusNotFound)
+	case r.Method == http.MethodGet && r.URL.Path == "/carts/cart-1" && cart == cartNotReady:
+		_, _ = w.Write([]byte(strings.Replace(cartAnswer, `"ready":true`, `"ready":false`, 1)))
 	case r.Method == http.MethodGet && r.URL.Path == "/carts/cart-1":
 		_, _ = w.Write([]byte(cartAnswer))
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/delivery-offers/"):
@@ -115,7 +147,7 @@ func (s *siblings) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(quoteAnswer()))
 	case r.URL.Path == "/payment-authorizations":
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write(authorizeAnswer(body))
+		_, _ = w.Write(authorizeAnswer(body, delta))
 	case strings.HasSuffix(r.URL.Path, "/voids"):
 		_, _ = w.Write([]byte(`{}`))
 	case r.URL.Path == "/checkout":
@@ -133,7 +165,7 @@ func quoteAnswer() string {
 "taxMinor":100,"totalMinor":2100,"expiresAt":%q}`, time.Now().Add(15*time.Minute).UTC().Format(time.RFC3339))
 }
 
-func authorizeAnswer(body []byte) []byte {
+func authorizeAnswer(body []byte, delta int64) []byte {
 	var req struct {
 		CheckoutSessionID string `json:"checkoutSessionId"`
 		TotalMinor        int64  `json:"totalMinor"`
@@ -141,7 +173,7 @@ func authorizeAnswer(body []byte) []byte {
 	_ = json.Unmarshal(body, &req)
 	out, _ := json.Marshal(map[string]any{
 		"authorizationId": "auth-" + req.CheckoutSessionID, "checkoutSessionId": req.CheckoutSessionID,
-		"state": "AUTHORIZED", "currency": "USD", "totalMinor": req.TotalMinor,
+		"state": "AUTHORIZED", "currency": "USD", "totalMinor": req.TotalMinor + delta,
 	})
 	return out
 }

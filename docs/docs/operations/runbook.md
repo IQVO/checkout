@@ -310,15 +310,23 @@ test fails the chart if it is.
 - Both POST routes require an `Idempotency-Key` header of 1 to 128 printable
   ASCII characters (`400 idempotency-key-required` when absent,
   `400 idempotency-key-invalid` when malformed or longer than 128).
-- The first response below 500 is stored per key for 24 h
-  (`internal/application/idempotency`); the key is global to the service, and
-  the stored fingerprint covers the method, the path and the SHA-256 of the
-  body.
+- A 2xx and a refusal whose problem type is FINAL or OUTCOME are stored per key
+  for 24 h (`internal/application/idempotency`); the key is global to the
+  service, and the stored fingerprint covers the method, the path and the
+  SHA-256 of the body. The class of every problem type is declared on its
+  catalogue entry (`errors.go`, [ADR 0011](/docs/adr/0011-every-problem-type-has-a-replay-class)).
 - A repeat with the same request replays the stored response with header
   `Idempotency-Replayed: true` (only on a replay); the same key with a different
-  request is 409 `idempotency-key-reused`. 5xx responses are never stored, so
-  the key stays retryable. Requests with one key are serialised in the process,
-  so concurrent identical requests run the command once.
+  request whose answer was stored is 409 `idempotency-key-reused`. A 5xx, a
+  RETRYABLE refusal (`concurrent-update`, `cart-not-checkout-ready`,
+  `placement-in-doubt`, `void-pending`, `illegal-transition`, `not-found`,
+  `validation-failed`, `offer-not-quotable`, `price-quote-rejected`) and a
+  refusal with no class are never stored: nothing is written, the key is
+  released, a retry under it runs the command again and another body under it
+  is a new request. Requests with one key are serialised in the process: after
+  a stored first answer concurrent identical requests run the command once;
+  after a released first one the next copy runs the command itself. Across
+  replicas both may run and the first stored record wins.
 - An expired record is ignored on read and overwritten by the next write for
   the same key, but no policy deletes `idempotency_keys` rows (see
   [Troubleshooting](/docs/operations/troubleshooting#idempotency_keys-grows)).
@@ -396,8 +404,10 @@ test fails the chart if it is.
 ### idempotency-key-reused storms
 
 - Symptom: a burst of 409 `idempotency-key-reused`.
-- Diagnosis: callers reuse a key while regenerating the body. Correct replays
-  come back with `Idempotency-Replayed: true` and are not a fault.
+- Diagnosis: callers reuse a key while regenerating the body after a stored
+  answer (a 2xx, or a FINAL or OUTCOME refusal). Correct replays come back with
+  `Idempotency-Replayed: true` and are not a fault. After a RETRYABLE refusal
+  the key is free: another body under it is a new request.
 - Action: fix the caller to keep the body byte-stable per logical request, or
   mint a fresh key.
 

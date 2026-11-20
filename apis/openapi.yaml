@@ -28,10 +28,18 @@ info:
     model. Every POST takes an Idempotency-Key header (1-128 printable ASCII
     characters): a missing or malformed key is 400 idempotency-key-required /
     idempotency-key-invalid, a repeat of the same method, path and body replays
-    the stored answer (any status below 500, errors included; a 5xx is never
-    stored, so the key can retry the real work) for 24 hours with the response
-    header Idempotency-Replayed: true, and the same key on a different request
-    is 409 idempotency-key-reused. The Idempotency-Key is global to the service,
+    the stored answer for 24 hours with the response header
+    Idempotency-Replayed: true, and the same key on a different request whose
+    answer was stored is 409 idempotency-key-reused. A 2xx is stored; so is a
+    refusal that is final for the request (malformed-request, session-closed,
+    price-quote-expired) or that committed state (authorization-mismatch: the
+    session was saved DECLINED before the answer). A refusal that a retry can
+    pass is NOT stored and its key is released, so the same Idempotency-Key runs
+    the request again and another body under it is a new request: not-found,
+    cart-not-checkout-ready, placement-in-doubt, void-pending, concurrent-update,
+    illegal-transition, offer-not-quotable, validation-failed and
+    price-quote-rejected, like every 5xx (never stored). The Idempotency-Key is
+    global to the service,
     not per route. A request body over 64 KiB, malformed JSON, an unknown field
     or a NUL character (U+0000) in the query string or body is 400
     malformed-request; a NUL in the path, or a path identifier longer than 128
@@ -237,8 +245,11 @@ components:
       description: >-
         Client-generated UUID per logical submit, 1-128 printable ASCII
         characters. A repeat of the same method, path and body replays the
-        stored answer (response header Idempotency-Replayed: true); the same key
-        on a different request is 409 idempotency-key-reused.
+        stored answer (response header Idempotency-Replayed: true) when that
+        answer was a 2xx or a refusal that is final or committed state; a
+        refusal a retry can pass, and every 5xx, is not stored: the key is
+        released and the same request runs again. The same key on a different
+        request whose answer was stored is 409 idempotency-key-reused.
       schema:
         type: string
         minLength: 1
