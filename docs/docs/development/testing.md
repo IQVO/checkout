@@ -17,9 +17,9 @@ available before the commit. `make help` lists them all.
 | --- | --- | --- | --- |
 | Unit | domain aggregate and rules, use cases over in-memory doubles, adapters over `httptest`, the composition roots | `internal/domain/**`, `internal/application/usecases`, `internal/adapters/**`, `cmd/*` (`*_test.go` without a build tag) | `make test` (`go test ./... -race`) |
 | Coverage gate | statement coverage of domain and application | `COVERAGE_PKGS = ./internal/domain/...,./internal/application/...` | `make coverage`, gate 90 % |
-| Godog features | Gherkin acceptance over the real chi router and use cases wired to the in-memory doubles | `features/*.feature` (10 files, 89 `Scenario` and `Scenario Outline` blocks; the runner executes 114 scenarios once the `Examples` rows are expanded) with the runner and steps in `internal/bdd` | `make bdd` (`go test ./... -run TestFeatures -v`) |
+| Godog features | Gherkin acceptance over the real chi router and use cases wired to the in-memory doubles | `features/*.feature` (11 files, 96 `Scenario` and `Scenario Outline` blocks; the runner executes 123 scenarios once the `Examples` rows are expanded) with the runner and steps in `internal/bdd` | `make bdd` (`go test ./... -run TestFeatures -v`) |
 | Contract | the repository contract suite run by both persistence adapters; the golden CloudEvents; the event catalogue against `apis/asyncapi.yaml`; the specs linted by Spectral | `internal/adapters/outbound/repocontract`, `internal/adapters/outbound/kafka/testdata/*.golden.json`, `internal/architecture/catalogue_fitness_test.go`, `.spectral.yaml`, `.spectral.asyncapi.yaml` | part of `make test`, `make integration`, `make arch-test`; Spectral in the `api-lint` CI job |
-| Integration | real Postgres and Kafka via testcontainers; each test boots its own container | files with `//go:build integration`: `cmd/api/e2e_*_integration_test.go` (3), `internal/adapters/outbound/postgres/*_integration_test.go` (4), `internal/adapters/outbound/outbox/main_integration_test.go` | `make integration` (`go test -tags=integration ./... -race -count=1`), needs only Docker |
+| Integration | real Postgres and Kafka via testcontainers; each test boots its own container | files with `//go:build integration`: `cmd/api/e2e_*_integration_test.go` (4), `internal/adapters/outbound/postgres/*_integration_test.go` (4), `internal/adapters/outbound/outbox/main_integration_test.go` | `make integration` (`go test -tags=integration ./... -race -count=1`), needs only Docker |
 | Mutation | gremlins over the domain packages | `.gremlins.yaml`: efficacy threshold 98, mutant coverage threshold 94 (plain numbers; the residuals are in `MUTATION.md`), 1 worker, timeout coefficient 30 | `make mutation` (every `internal/domain/<pkg>` in turn), `make mutation-full` (`./internal/domain`) |
 | Architecture fitness | executable rules on the package graph and on source conventions | `internal/architecture` (see below) | `make arch-test` |
 
@@ -40,12 +40,12 @@ imports them.
 | `api_idempotency.feature` | 8 | a write without a key is refused; a key that is not 1 to 128 printable ASCII characters is refused; a replayed open and a replayed confirm return the stored answer; the same key with another request or on another route is refused; a malformed body is a problem document; an unknown session is not found |
 | `platform.feature` | 2 | liveness and readiness answer; the drain gate flips readiness off |
 | `session_open_rules.feature` | 12 | the OpenSession rules of the Checkout documentation (includes 6 `Examples` tables) |
-| `session_confirm_rules.feature` | 18 | the ConfirmSession rules of the Checkout documentation (includes 5 `Examples` tables) |
+| `session_confirm_rules.feature` | 19 | the ConfirmSession rules of the Checkout documentation (includes 5 `Examples` tables) |
 | `session_policy_rules.feature` | 16 | the policy rules of the Checkout documentation (includes 2 `Examples` tables) |
-| `session_api_rules.feature` | 5 | the REST write rules: the Idempotency-Key format, the 24 hour replay window, stored error answers, a NUL character in a body, the 64 KiB body limit (includes 2 `Examples` tables) |
+| `session_api_rules.feature` | 7 | the REST write rules: the Idempotency-Key format, the 24 hour replay window, a FINAL refusal is stored and a RETRYABLE one releases its key (ADR 0011), a NUL character in a body, the 64 KiB body limit (includes 2 `Examples` tables) |
 
 The `Scenarios` column counts definitions; with the `Examples` rows expanded the
-runner reports `114 scenarios (114 passed)` (`go test ./internal/bdd -run TestFeatures
+runner reports `123 scenarios (123 passed)` (`go test ./internal/bdd -run TestFeatures
 -count=1 -v`). The four `session_*_rules.feature` files pin the rules documented in
 the pack and in the ADRs; the other six are the original acceptance set.
 

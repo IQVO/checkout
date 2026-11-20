@@ -54,8 +54,16 @@ spec lists the three session routes and not the two probes. See the
   under the key for 24 h with the request fingerprint (method, path and
   SHA-256 of the body). An equal request replays it with the header
   `Idempotency-Replayed: true` (only on a replay); the same key with a
-  different method, path or body is `409 idempotency-key-reused`. A 5xx is
-  never stored. Concurrent requests with one key run the command once.
+  different method, path or body, after a stored answer, is
+  `409 idempotency-key-reused`. A 2xx and a refusal that is final for the
+  request (`malformed-request`, `session-closed`, `price-quote-expired`) or
+  that committed state (`authorization-mismatch`) are stored; a refusal a retry
+  can pass (`not-found`, `cart-not-checkout-ready`, `placement-in-doubt`,
+  `void-pending`, `concurrent-update`, `illegal-transition`,
+  `offer-not-quotable`, `validation-failed`, `price-quote-rejected`) and every
+  5xx are not: the key is released, the same request runs again and another
+  body under it is a new request
+  ([ADR 0011](/docs/adr/0011-every-problem-type-has-a-replay-class)).
 - **`202` is not an error.** It means the authorization or the place-order
   outcome is unknown; the session is saved and a policy resolves it. Poll
   `GET /checkout-sessions/{sessionId}`.

@@ -45,7 +45,7 @@ Source: `internal/domain/checkoutsession/session.go`, `values.go`, `transitions.
 | **Resolve Stuck Authorizations** | Policy: re-call AuthorizePayment with the same key for a session `AUTHORIZING` for 2 minutes or more. | `ResolveStuckAuthorizations` | A new authorization attempt: the key (and the token) are the same. |
 | **Authorization Attempt** | The counter in the authorization key `<sessionId>:auth:<attempt>`; it grows when a `DECLINED` session is confirmed again. | `CheckoutSession.AuthAttempt()` | A retry of a stuck call, which keeps the attempt. |
 | **Purge Stored Placements** | Policy: drop the stored placement request 24 h after a closed state. | `PurgeStoredPlacements` | Deleting the session: only the request body goes. |
-| **Idempotency Key** | The caller's header that makes a write replayable for 24 h; also the deterministic keys sent downstream. | `idempotency.Record`, `Idempotency-Key` | The CloudEvents `id`, which is minted per event occurrence. |
+| **Idempotency Key** | The caller's header that makes a write replayable for 24 h (a 2xx or a FINAL or OUTCOME refusal; a RETRYABLE refusal releases the key); also the deterministic keys sent downstream. | `idempotency.Record`, `Idempotency-Key` | The CloudEvents `id`, which is minted per event occurrence. |
 
 ## Neighbour terms this context uses
 

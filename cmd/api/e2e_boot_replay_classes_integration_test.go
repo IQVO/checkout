@@ -102,7 +102,11 @@ func TestReplayClassesOverRealPostgres(t *testing.T) {
 	})
 
 	t.Run("OUTCOME authorization-mismatch: the declined session and the void are committed, the answer is stored and replayed", func(t *testing.T) {
+		sib.setCart(cartReady)
 		opened := svc.call(t, "POST", "/checkout-sessions", "k-open-mismatch", openBody)
+		if opened.status != http.StatusCreated {
+			t.Fatalf("open = %d %s", opened.status, opened.body)
+		}
 		id, _ := opened.json(t)["sessionId"].(string)
 		sib.setAuthDelta(1)
 		defer sib.setAuthDelta(0)
