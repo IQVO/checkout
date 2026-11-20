@@ -81,23 +81,36 @@ type conflictDTO struct {
 // Place implements ports.OrderPlacer: POST /checkout with Idempotency-Key =
 // sessionId. 2xx is the order (a replay answers the first response); a
 // definitive 409 is a requote; a 400 or 422 is a rejection (a contract bug on
-// our side). Everything else - a transport error, a timeout, a 5xx, a retriable
-// 409, an unreadable answer - leaves the outcome unknown and is
+// our side). A requote or a rejection whose slug customer-ordering releases
+// under the key (placeOrderRefusals, replay class RETRYABLE) is flagged
+// Released: the session keeps it in doubt and the same key is sent again.
+// Everything else - a transport error, a timeout, a 5xx, a retriable 409, an
+// unreadable answer - leaves the outcome unknown and is
 // ports.ErrOrderingUnavailable.
 func (g *Gateway) Place(ctx context.Context, sessionID string, body []byte) (exchange.PlaceOutcome, error) {
 	resp, err := g.c.Do(ctx, http.MethodPost, "/checkout", sessionID, body)
 	if err != nil {
 		return exchange.PlaceOutcome{}, fmt.Errorf("%w: %w", ports.ErrOrderingUnavailable, err)
 	}
+	slug := resp.Slug()
 	switch {
 	case resp.OK():
 		return placed(resp.Body)
-	case resp.Status == http.StatusConflict && definitiveConflicts[resp.Slug()]:
-		return g.requote(resp.Body)
+	case resp.Status == http.StatusConflict && definitiveConflicts[slug]:
+		out, err := g.requote(resp.Body)
+		return refused(out, slug), err
 	case resp.Status == http.StatusBadRequest || resp.Status == http.StatusUnprocessableEntity:
-		return exchange.PlaceOutcome{Kind: exchange.OutcomeRejected, Detail: fmt.Sprintf("%d %s: %s", resp.Status, resp.Slug(), resp.Detail())}, nil
+		return refused(exchange.PlaceOutcome{Kind: exchange.OutcomeRejected, Detail: fmt.Sprintf("%d %s: %s", resp.Status, slug, resp.Detail())}, slug), nil
 	}
-	return exchange.PlaceOutcome{}, fmt.Errorf("%w: status %d", ports.ErrOrderingUnavailable, resp.Status)
+	return exchange.PlaceOutcome{}, fmt.Errorf("%w: status %d %s", ports.ErrOrderingUnavailable, resp.Status, slug)
+}
+
+// refused names the problem type of a refusal and flags the ones the callee
+// releases under the key.
+func refused(out exchange.PlaceOutcome, slug string) exchange.PlaceOutcome {
+	out.Slug = slug
+	out.Released = placeOrderRefusals.retryable(slug)
+	return out
 }
 
 func placed(payload []byte) (exchange.PlaceOutcome, error) {

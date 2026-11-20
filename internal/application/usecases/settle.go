@@ -27,8 +27,9 @@ func (d Deps) place(ctx context.Context, s *checkoutsession.CheckoutSession) (vi
 }
 
 // settlePlacement applies the answer of the place-order step: an error of any
-// kind is an unknown outcome (the semantic lock holds), a definitive answer is
-// recorded and, for a requote or a rejection, followed by the owed void.
+// kind is an unknown outcome (the semantic lock holds), so is a refusal that
+// customer-ordering released (while the in-doubt budget lasts), a definitive
+// answer is recorded and, for a requote or a rejection, followed by the owed void.
 func (d Deps) settlePlacement(ctx context.Context, id checkoutsession.ID, out exchange.PlaceOutcome, placeErr error) (views.Session, error) {
 	s, err := d.mutate(ctx, id, func(s *checkoutsession.CheckoutSession) error {
 		return d.record(s, out, placeErr)
@@ -39,9 +40,7 @@ func (d Deps) settlePlacement(ctx context.Context, id checkoutsession.ID, out ex
 	if err != nil {
 		return views.Session{}, err
 	}
-	if placeErr == nil && out.Kind == exchange.OutcomeRejected {
-		d.alert(ctx, "place-order-rejected", string(id), out.Detail)
-	}
+	d.noteRefusal(ctx, s, out, placeErr)
 	if s.VoidOwed() != nil {
 		if after := d.settleVoid(ctx, id); after != nil {
 			s = after
@@ -50,10 +49,31 @@ func (d Deps) settlePlacement(ctx context.Context, id checkoutsession.ID, out ex
 	return views.Of(s), nil
 }
 
+// noteRefusal reports a refusal of the place-order step: a rejection that ended
+// the session raises the place-order-rejected alert (as always); a refusal
+// customer-ordering released, which left the session PLACING, is logged with its
+// problem type and detail, the record of the last refusal (the session has no
+// field for it).
+func (d Deps) noteRefusal(ctx context.Context, s *checkoutsession.CheckoutSession, out exchange.PlaceOutcome, placeErr error) {
+	switch {
+	case placeErr != nil:
+	case s.State() == checkoutsession.StatePlacing && out.Released:
+		d.warn(ctx, "customer-ordering released a refusal, the placement stays PLACING and is retried under the same key",
+			"sessionId", string(s.ID()), "slug", out.Slug, "detail", out.Detail, "attempts", s.PlacementAttempts())
+	case out.Kind == exchange.OutcomeRejected:
+		d.alert(ctx, "place-order-rejected", string(s.ID()), out.Detail)
+	}
+}
+
 func (d Deps) record(s *checkoutsession.CheckoutSession, out exchange.PlaceOutcome, placeErr error) error {
 	now := d.now()
 	switch {
 	case placeErr != nil:
+		return s.RecordPlacementInDoubt(now)
+	case out.Released && !s.GiveUpDue(now):
+		// customer-ordering released the refusal: the key is free, the session
+		// stays PLACING and the resolver sends the same body again. Once the
+		// in-doubt budget is spent the refusal is read as it was before the rule.
 		return s.RecordPlacementInDoubt(now)
 	case out.Kind == exchange.OutcomePlaced:
 		return s.RecordPlaced(out.OrderID, now)
