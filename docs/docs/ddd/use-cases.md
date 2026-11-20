@@ -114,9 +114,9 @@ answered; they have no route of their own and are described as steps below.
 | customer-ordering answers | Result | State | HTTP | Event |
 | --- | --- | --- | --- | --- |
 | 2xx with an `orderId` | `RecordPlaced` | `COMPLETED` | 200 | `CheckoutCompleted` |
-| 409 `offer-not-quotable`, `promise-capacity-exhausted` or `book-closed` | `RecordRequoteRequired` (offers formatted in the destination's time zone), void owed | `REQUOTE_REQUIRED` | 200 | `CheckoutRequoteRequired` |
-| 400 or 422 | `RecordFailure` code `place-order-rejected`, void owed, alert `place-order-rejected` | `FAILED` | 200 | `CheckoutFailed` |
-| timeout, transport error, 5xx, a retriable 409, an answer without an `orderId` | `RecordPlacementInDoubt` | `PLACING` | 202 | `CheckoutPlacementInDoubt` (first time only) |
+| 409 `offer-not-quotable`, or `promise-capacity-exhausted` / `book-closed` after the in-doubt bound (ADR 0011) | `RecordRequoteRequired` (offers formatted in the destination's time zone), void owed | `REQUOTE_REQUIRED` | 200 | `CheckoutRequoteRequired` |
+| 400 or 422, or a released 422 (`validation-failed`, ...) after the in-doubt bound (ADR 0011) | `RecordFailure` code `place-order-rejected`, void owed, alert `place-order-rejected` | `FAILED` | 200 | `CheckoutFailed` |
+| timeout, transport error, 5xx, a retriable 409, a refusal customer-ordering releases (ADR 0011), an answer without an `orderId` | `RecordPlacementInDoubt` | `PLACING` | 202 | `CheckoutPlacementInDoubt` (first time only) |
 
 - **Idempotency:** the `Idempotency-Key` middleware replays the stored first
   response; downstream keys are deterministic: `<sessionId>:auth:<attempt>`,

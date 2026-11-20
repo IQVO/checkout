@@ -129,14 +129,25 @@ named here is listed in [Observability](/docs/operations/observability).
 ### The session stays `PLACING`
 
 - **Cause:** customer-ordering timed out, was unreachable or answered 5xx or a
-  retriable 409. The stored, PII-free request is replayed byte for byte with
+  retriable 409, **or refused with a problem type it releases under the key**
+  (replay class RETRYABLE, ADR 0011): 409 `promise-capacity-exhausted` or
+  `book-closed`, 422 `validation-failed`, `group-spans-nodes` or
+  `promise-destination-mismatch`. Those can pass later, so the session is not
+  ended on the first one. The stored, PII-free request is replayed byte for byte with
   `Idempotency-Key = sessionId`, so a pass that raced a slow first call cannot
   place a second order.
 - **Check:** `SELECT placement_attempts, next_attempt_at FROM checkout_sessions
   WHERE session_id = '...'` (backoff 30 s doubling to 15 min); the policy logs.
-- **Fix:** restore customer-ordering. At 20 h the ALERT
-  `placement-in-doubt-20h` fires; at 22 h the session becomes `FAILED`
-  (`placement-unresolved`) and the authorization is voided.
+  The last refusal of customer-ordering is the WARN `customer-ordering released
+  a refusal, the placement stays PLACING and is retried under the same key`
+  (`sessionId`, `slug`, `detail`, `attempts`): the slug says what has to change
+  there (a book to reopen, a shopper or address to exist).
+- **Fix:** restore customer-ordering, or fix what the slug names. At 20 h the
+  ALERT `placement-in-doubt-20h` fires; at 22 h the session becomes `FAILED`
+  (`placement-unresolved`) and the authorization is voided. A session that was
+  kept by a released refusal ends as that refusal did before the rule at 22 h:
+  `REQUOTE_REQUIRED` (409) or `FAILED` `place-order-rejected` (422, with the
+  ALERT), the void owed.
 
 ### `REQUOTE_REQUIRED` or `FAILED` and the money
 

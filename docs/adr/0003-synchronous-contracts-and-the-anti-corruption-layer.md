@@ -35,6 +35,10 @@ another context is imported.
   alert). Anything else (timeout, transport error, 5xx, a `concurrent-update` 409, an
   answer without an `orderId`) leaves the outcome UNKNOWN: the session stays PLACING and
   the confirm route answers 202.
+  *(2026-11-19: refined by [ADR 0011](./0011-retry-the-refusals-customer-ordering-releases.md): a refusal that
+  customer-ordering releases under the key, which includes `promise-capacity-exhausted`, `book-closed` and the
+  422s `validation-failed`, `group-spans-nodes` and `promise-destination-mismatch`, keeps the session PLACING and is
+  retried under the same key; at the in-doubt bound it ends as described here.)*
 - **Void.** 200, 404 and a 409 `illegal-transition` (already voided, captured or expired)
   count as done. A transport error, 5xx or a `concurrent-update` leaves the debt on the
   session (`voidOwed`) and RetryOwedVoids tries again every minute (H5).

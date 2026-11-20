@@ -372,7 +372,10 @@ test fails the chart if it is.
 - Diagnosis: `SELECT session_id, placement_attempts, next_attempt_at, updated_at
   FROM checkout_sessions WHERE state = 'PLACING';` (the backoff doubles from 30
   s to 15 min). Check customer-ordering reachability and whether it holds a
-  result for `Idempotency-Key = <sessionId>`.
+  result for `Idempotency-Key = <sessionId>`. A refusal customer-ordering
+  releases (ADR 0011) keeps the session here too: look for the WARN
+  `customer-ordering released a refusal` with the `sessionId`; its `slug` is
+  the reason.
 - Action: fix customer-ordering. At 22 h the session becomes `FAILED`
   (`placement-unresolved`) with the void owed, inside customer-payments' 24 h
   backstop and the network's 24 h idempotency window.

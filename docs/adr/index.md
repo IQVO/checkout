@@ -24,3 +24,4 @@ immutable; a changed decision gets a new ADR that supersedes the old one. The
 | [0008](/docs/adr/0008-requoted-dates-in-the-destination-time-zone) | Requoted delivery dates in the destination's time zone | Accepted (2026-10-30). |
 | [0009](/docs/adr/0009-adopt-the-fleet-rest-api-guideline) | Adopt the fleet REST API guideline | Accepted (2026-11-01). |
 | [0010](/docs/adr/0010-accept-the-consolidated-tier-and-the-capacity-band) | Accept delivery-promise's CONSOLIDATED tier and carry the capacity band | Accepted (2026-11-18). Additive; pricing does not yet name the tier (open decision). |
+| [0011](/docs/adr/0011-retry-the-refusals-customer-ordering-releases) | Retry the refusals customer-ordering releases under the session's Idempotency-Key | Accepted (2026-11-19). Refines ADR 0003 (outcome mapping of PlaceOrder). |

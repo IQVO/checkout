@@ -44,6 +44,8 @@ type OrderPlacer interface {
 	// replay is byte for byte identical.
 	BuildRequest(draft exchange.PlacementDraft) ([]byte, error)
 	// Place sends the stored body with Idempotency-Key = sessionId. A
-	// timeout, a 5xx or a retriable 409 is ErrOrderingUnavailable.
+	// timeout, a 5xx or a retriable 409 is ErrOrderingUnavailable; a refusal
+	// the callee releases under the key (replay class RETRYABLE) comes back as
+	// an outcome flagged Released, and the same key is sent again.
 	Place(ctx context.Context, sessionID string, body []byte) (exchange.PlaceOutcome, error)
 }

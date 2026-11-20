@@ -62,7 +62,8 @@ const (
 	// OutcomePlaced: the order exists (201, or the replayed first answer).
 	OutcomePlaced OutcomeKind = iota + 1
 	// OutcomeRequote: a definitive 409 (offer-not-quotable,
-	// promise-capacity-exhausted, book-closed) carrying re-quoted offers.
+	// promise-capacity-exhausted, book-closed); offer-not-quotable carries
+	// re-quoted offers.
 	OutcomeRequote
 	// OutcomeRejected: a 400/422, a contract bug on our side.
 	OutcomeRejected

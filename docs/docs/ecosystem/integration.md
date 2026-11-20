@@ -54,9 +54,10 @@ retrying is the job of the saga policies.
 | customer-ordering answers | Meaning for the saga |
 | --- | --- |
 | 2xx with an `orderId` | placed: `COMPLETED` |
-| 409 whose problem type is `offer-not-quotable`, `promise-capacity-exhausted` or `book-closed` | definitive requote: the re-quoted offers become `requotedOffers`, `REQUOTE_REQUIRED`, the authorization is voided |
-| 400 or 422 | a contract bug on this side: `FAILED` (`place-order-rejected`), voided, alert |
-| anything else: transport error, timeout, 5xx, a `concurrent-update` 409, a 2xx without an `orderId` | outcome UNKNOWN: the session stays `PLACING` (HTTP 202) and `ResolveInDoubtPlacements` replays |
+| 409 `offer-not-quotable` | definitive requote (OUTCOME at customer-ordering: stored): the re-quoted offers become `requotedOffers`, `REQUOTE_REQUIRED`, the authorization is voided |
+| 400 or 422 whose problem type is FINAL or unknown (`malformed-request`, `line-without-promise`, ...) | a contract bug on this side: `FAILED` (`place-order-rejected`), voided, alert |
+| a refusal customer-ordering **releases** (replay class RETRYABLE, ADR 0011): 409 `promise-capacity-exhausted`, `book-closed`; 422 `validation-failed`, `group-spans-nodes`, `promise-destination-mismatch` | not an answer yet: the session stays `PLACING` (HTTP 202), WARN `customer-ordering released a refusal`, and `ResolveInDoubtPlacements` sends the same body with the same key until it passes; at the 22 h bound it ends as the refusal did before (`REQUOTE_REQUIRED` for the 409s, `FAILED` `place-order-rejected` for the 422s) |
+| anything else: transport error, timeout, 5xx, 404, a `concurrent-update` 409, a 2xx without an `orderId` | outcome UNKNOWN: the session stays `PLACING` (HTTP 202) and `ResolveInDoubtPlacements` replays |
 
 The re-quoted offers carry an optional IANA `timeZone`; each delivery-by bound is
 formatted as a calendar date in that zone (UTC when it is absent, `Local` or

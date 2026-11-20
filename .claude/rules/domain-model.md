@@ -4,7 +4,7 @@
 
 - **Checkout Session** — the purchase transaction from review to placed order (the saga). Holds references (`shopperId`, `shipToAddressId`), never PII.
 - **Place-Order Step** — the pivot of the saga: customer-ordering `POST /checkout` through the Anti-Corruption Layer. Not the network's "Checkout" as a whole.
-- **In-Doubt Placement** — the place-order outcome is unknown (timeout, 5xx); PLACING is the semantic lock: no void, no new attempt (`ErrPlacementInDoubt`).
+- **In-Doubt Placement** — the place-order outcome is unknown (timeout, 5xx) or customer-ordering released a refusal it can answer differently later (ADR 0011); PLACING is the semantic lock: no void, no new attempt (`ErrPlacementInDoubt`).
 - **Requote** — a definitive 409 from the network: the authorization is voided and the session carries `requotedOffers` (REQUOTE_REQUIRED).
 - **Allocation** — the share of the authorization that belongs to one shipment group (`SessionGroup.AmountMinor`; items + delivery + pro-rata tax).
 - **Void Owed** — the decision to void an authorization, stored with the state change; RetryOwedVoids tries until it succeeds.
