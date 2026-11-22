@@ -184,6 +184,6 @@ func problemFromUseCase(ctx context.Context, err error) *problem {
 	if errors.Is(err, ports.ErrNotFound) {
 		return problemNotFound()
 	}
-	slog.ErrorContext(ctx, "a2a skill failed with an unexpected error", "error", err)
+	slog.ErrorContext(ctx, "a2a skill failed with an unexpected error", "error", logReplacer.Replace(err.Error()))
 	return &problem{Type: problemTypeBase + "internal-error", Title: "Internal server error", Detail: "an unexpected error occurred; see the server logs", Status: 500}
 }
