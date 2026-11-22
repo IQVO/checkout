@@ -26,6 +26,6 @@ func mapError(ctx context.Context, err error) error {
 	if errors.Is(err, ports.ErrNotFound) {
 		return toolError("not-found", err.Error())
 	}
-	slog.ErrorContext(ctx, "mcp tool failed with an unexpected error", "error", err)
+	slog.ErrorContext(ctx, "mcp tool failed with an unexpected error", "error", logReplacer.Replace(err.Error()))
 	return toolError("internal-error", "an unexpected internal error occurred")
 }
