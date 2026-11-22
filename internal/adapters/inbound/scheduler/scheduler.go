@@ -74,7 +74,7 @@ func (j Job) Run(ctx context.Context) error {
 		n, err := j.Tick(ctx)
 		switch {
 		case err != nil && ctx.Err() == nil:
-			log.ErrorContext(ctx, "scheduled sweep failed; trying again at the next tick", "job", j.Name, "handled", n, "error", err)
+			log.ErrorContext(ctx, "scheduled sweep failed; trying again at the next tick", "job", j.Name, "handled", n, "error", sanitizeErr(err))
 		case n > 0:
 			log.InfoContext(ctx, "scheduled sweep done", "job", j.Name, "handled", n)
 		}
