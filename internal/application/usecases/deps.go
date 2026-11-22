@@ -130,7 +130,7 @@ func (d Deps) alert(ctx context.Context, code, sessionID, detail string) {
 
 func (d Deps) warn(ctx context.Context, msg string, args ...any) {
 	if d.Log != nil {
-		d.Log.WarnContext(ctx, msg, args...)
+		d.Log.WarnContext(ctx, msg, sanitizeArgs(args)...)
 	}
 }
 

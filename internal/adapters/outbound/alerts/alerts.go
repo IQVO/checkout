@@ -22,5 +22,5 @@ func (l Logger) Alert(ctx context.Context, code, sessionID, detail string) {
 	if log == nil {
 		log = slog.Default()
 	}
-	log.ErrorContext(ctx, "ALERT", "alert", code, "sessionId", sessionID, "detail", detail)
+	log.ErrorContext(ctx, "ALERT", "alert", sanitizeLog(code), "sessionId", sanitizeLog(sessionID), "detail", sanitizeLog(detail))
 }

@@ -41,7 +41,7 @@ func (z *zones) location(name string) *time.Location {
 	}
 	if reason != "" {
 		z.logger.Warn("requoted offer time zone unusable; delivery dates fall back to UTC",
-			"timeZone", name, "reason", reason)
+			"timeZone", sanitizeLog(name), "reason", sanitizeLog(reason))
 	}
 	z.known[name] = loc
 	return loc
